@@ -141,7 +141,7 @@ input.in::placeholder, textarea.in::placeholder{ color:#56616b; }
 .steps{ margin:0; padding:0; list-style:none; counter-reset:s; }
 .steps li{ counter-increment:s; display:grid; grid-template-columns:30px 1fr; gap:6px; padding:12px 0; border-top:1px solid var(--line-soft); }
 .steps li:first-child{ border-top:0; padding-top:0; }
-.steps li::before{ content:counter(s); color:var(--cyan); font-family:var(--sans); font-weight:700; font-size:16px; }
+.steps li::before{ min-width:0; content:counter(s); color:var(--cyan); font-family:var(--sans); font-weight:700; font-size:16px; }
 .steps b{ font-family:var(--sans); display:block; font-size:15px; }
 .tier{ display:flex; justify-content:space-between; padding:10px 0; border-top:1px solid var(--line-soft); }
 .tier:first-child{ border-top:0; padding-top:0; }
@@ -464,6 +464,46 @@ async function render(){
   return viewRefer();
 }
 function loadError(e){ console.error(e); clearApp().innerHTML = `<div class="need err" style="margin-top:18px">Couldn't load your account: ${esc(e.message)}. Check your connection and try again.</div><button class="btn ghost" onclick="render()">Try again</button>`; }
+/* ---------- add-to-home-screen walkthrough ---------- */
+const UA = navigator.userAgent || "";
+const IS_IOS = /iPhone|iPad|iPod/.test(UA) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const IS_ANDROID = /Android/.test(UA);
+const IN_APP = /FBAN|FBAV|Instagram|LinkedInApp|Snapchat|Twitter|Line\/|GSA\//.test(UA);
+const IS_STANDALONE = () => window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+let installEvt = null;
+window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvt = e; const b = $("#a2hsInstall"); if (b) b.classList.remove("hidden"); });
+window.addEventListener("appinstalled", () => { store.set("jnm_a2hs_done", true); const c = $("#a2hs"); if (c) c.remove(); });
+function homeTip(signedIn){
+  if (IS_STANDALONE() || store.get("jnm_a2hs_done", false) || (!IS_IOS && !IS_ANDROID)) return "";
+  const shareIcon = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>`;
+  let steps;
+  if (IN_APP) steps = `<li><div><b>Open this page in ${IS_IOS ? "Safari" : "Chrome"} first</b><span class="muted small">Tap the ••• or ⋮ menu at the top and choose "Open in ${IS_IOS ? "Safari" : "browser"}". Apps like Instagram and Facebook can't add it to your home screen.</span></div></li>`;
+  else if (IS_IOS) steps = `
+    <li><div><b>Tap Share ${shareIcon}</b><span class="muted small">${/iPad/.test(UA) || navigator.maxTouchPoints > 1 && !/iPhone/.test(UA) ? "At the top right of Safari." : "At the bottom of Safari. If you don't see it, tap the page once."}</span></div></li>
+    <li><div><b>Tap "Add to Home Screen"</b><span class="muted small">Scroll down the share list to find it.</span></div></li>
+    <li><div><b>Tap Add</b><span class="muted small">The RV icon lands on your home screen. One tap to send a referral.</span></div></li>`;
+  else steps = `
+    <li><div><b>Tap the ⋮ menu</b><span class="muted small">At the top right of Chrome.</span></div></li>
+    <li><div><b>Tap "Add to Home screen" or "Install app"</b><span class="muted small">Then confirm. The RV icon lands on your home screen.</span></div></li>`;
+  return `<section class="sec" id="a2hs">
+    <div class="sec-h"><span><span class="n">★</span>Save it to your home screen</span><span class="aside">10 seconds</span></div>
+    <div class="sec-b">
+      <p class="small" style="margin:0 0 12px">Keep JNM Referrals one tap away, like an app. When you meet a homeowner who needs work, send it on the spot.${signedIn && IS_IOS && !IN_APP ? " The first time you open it from your home screen, you'll sign in once more with your email." : ""}</p>
+      <ol class="steps">${steps}</ol>
+      <button class="btn ${installEvt ? "" : "hidden"}" id="a2hsInstall">Add to home screen</button>
+      <div style="display:flex;justify-content:space-between;margin-top:14px"><button class="linkbtn" id="a2hsLater">Later</button><button class="linkbtn" id="a2hsDone">I've added it</button></div>
+    </div></section>`;
+}
+function wireHomeTip(){
+  const c = $("#a2hs"); if (!c) return;
+  $("#a2hsLater").onclick = () => { sessionStorage.setItem("jnm_a2hs_later", "1"); c.remove(); };
+  $("#a2hsDone").onclick = () => { store.set("jnm_a2hs_done", true); c.remove(); toast("You're all set"); };
+  $("#a2hsInstall").onclick = async () => { if (!installEvt) return; installEvt.prompt(); const r = await installEvt.userChoice; installEvt = null; if (r.outcome === "accepted"){ store.set("jnm_a2hs_done", true); c.remove(); } };
+}
+const showHomeTip = (signedIn) => {
+  if (!signedIn && store.get("jnm_ref", null)) return ""; // invited: apply first so the invite is credited, then show the tip
+  try { return sessionStorage.getItem("jnm_a2hs_later") ? "" : homeTip(signedIn); } catch { return homeTip(signedIn); }
+};
 const demoBanner = msg => !LIVE ? `<div class="demo">${msg}</div>` : "";
 const footer = () => `<div class="foot"><button class="linkbtn" onclick="go('owner')">Owner login</button></div>`;
 
@@ -479,7 +519,7 @@ function viewSignIn(role, presetEmail){
     ${owner ? "" : `<section class="sec"><div class="sec-b intro">
         <h1>Know someone who needs work done? Get paid for it.</h1>
         <p class="muted">Send us a homeowner who needs a kitchen, bath, impact windows, a driveway, or more. When the job is installed, you earn ${money(minTier())} to ${money(maxTier())}, and you can follow every step along the way.</p>
-      </div></section>`}
+      </div></section>${showHomeTip()}`}
     <section class="sec">
       <div class="sec-h"><span><span class="n">1</span>${owner ? "Owner sign in" : "Sign in or apply"}</span><span class="aside">No password needed</span></div>
       <div class="sec-b">
@@ -500,6 +540,7 @@ function viewSignIn(role, presetEmail){
       </div>
     </section>
     ${owner ? "" : footer()}`;
+  wireHomeTip();
   const msg = (el, text, kind) => { el.className = "need " + (kind || ""); el.textContent = text; };
   let email = "";
   const send = async () => {
@@ -623,6 +664,7 @@ function viewRefer(){
   app.innerHTML = `
     ${demoBanner("Demo mode: referrals are saved on this device only.")}
     ${pendingBanner()}
+    ${showHomeTip(true)}
     <section class="sec">
       <div class="sec-h"><span><span class="n">1</span>Project type</span><span class="aside">Payout when it closes</span></div>
       <div class="sec-b"><div class="opts" id="projOpts">
@@ -643,7 +685,7 @@ function viewRefer(){
     <button class="btn" id="send" disabled>Send referral</button>
     <div class="sending-as small" style="margin-top:16px"><span class="muted">Signed in as ${esc(me.name)} · ${esc(me.partner_type)}</span><button class="linkbtn" id="lo">Sign out</button></div>
     ${footer()}`;
-  liveFormat($("#cPhone"));
+  liveFormat($("#cPhone")); wireHomeTip();
   $("#lo").onclick = async () => { await api.signOut("partner"); state.project = null; render(); };
   $("#projOpts").onclick = e => { const b = e.target.closest(".opt"); if (!b) return; state.project = b.dataset.k;
     app.querySelectorAll("#projOpts .opt").forEach(x => x.setAttribute("aria-pressed", x === b));
