@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>JNM Referrals</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<style>
+:root{
+  color-scheme: dark;
+  --bg:#000000; --panel:#0c1014; --field:#141a20; --line:#222b33; --line-soft:#1a2128;
+  --text:#eef3f6; --muted:#8a96a0; --cyan:#22d3ee; --cyan-ink:#0b4552; --warn:#f5b84a; --bad:#f07171; --good:#4ade80;
+  --mono:"IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --sans:"Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){ --bg:#000000; --panel:#0c1014; } }
+:root[data-theme="dark"]{ --bg:#000000; --panel:#0c1014; }
+html{ scroll-padding-top:env(safe-area-inset-top,0px); background:var(--bg); }
+*,*::before,*::after{ box-sizing:inherit; }
+body{ margin:0; background:var(--bg); color:var(--text); font-family:var(--mono); font-size:15px; line-height:1.45; -webkit-font-smoothing:antialiased; }
+body::before{ content:""; position:fixed; inset:0 0 auto; height:env(safe-area-inset-top,0px); z-index:10; background:var(--bg); }
+button,input,select,textarea{ font:inherit; color:inherit; }
+a{ color:var(--cyan); }
+:focus-visible{ outline:2px solid var(--cyan); outline-offset:2px; }
+.wrap{ max-width:620px; margin:0 auto; padding:0 16px 48px; }
+
+/* header */
+header.top{ position:sticky; top:env(safe-area-inset-top,0px); z-index:5; background:var(--bg); border-bottom:1px solid var(--line); }
+.top-in{ max-width:620px; margin:0 auto; padding:14px 16px 12px; display:flex; align-items:flex-end; justify-content:space-between; gap:12px; }
+.brand{ display:flex; align-items:center; gap:10px; min-width:0; }
+.brand img{ height:34px; width:auto; display:block; }
+.brand-txt{ line-height:1.05; }
+.brand-txt b{ display:block; font-family:var(--sans); font-weight:700; font-size:19px; letter-spacing:-.01em; }
+.brand-txt span{ display:block; color:var(--cyan); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; margin-top:3px; white-space:nowrap; }
+.earn{ text-align:right; flex-shrink:0; }
+.earn small{ display:block; font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--text); }
+.earn strong{ display:block; font-family:var(--sans); font-size:30px; font-weight:700; line-height:1.05; padding-bottom:6px; border-bottom:3px solid var(--cyan); min-width:96px; transition:color .2s; }
+.earn strong.bump{ color:var(--cyan); }
+
+/* tabs */
+nav.tabs{ max-width:620px; margin:0 auto; display:flex; gap:20px; padding:0 16px; overflow-x:auto; scrollbar-width:none; }
+nav.tabs::-webkit-scrollbar{ display:none; }
+nav.tabs button{ background:none; border:0; padding:14px 2px 11px; font-size:13px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; color:var(--text); border-bottom:3px solid transparent; white-space:nowrap; cursor:pointer; }
+nav.tabs button[aria-selected="true"]{ color:var(--cyan); border-bottom-color:var(--cyan); }
+
+/* sections */
+.sec{ background:var(--panel); border:1px solid var(--line); border-radius:4px; margin-top:18px; }
+.sec-h{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:14px 16px; border-bottom:1px solid var(--line); font-size:12.5px; letter-spacing:.12em; text-transform:uppercase; }
+.sec-h .n{ color:var(--cyan); font-family:var(--sans); font-weight:700; font-size:15px; margin-right:10px; }
+.sec-h .aside{ color:var(--muted); font-size:11px; }
+.sec-b{ padding:16px; }
+label.l, .l{ display:block; font-size:11.5px; letter-spacing:.12em; text-transform:uppercase; margin:0 0 7px; }
+.field{ margin-bottom:14px; }
+.row{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+@media (max-width:420px){ .row{ grid-template-columns:1fr; } }
+input.in, select.in, textarea.in{ width:100%; background:var(--field); border:1px solid var(--line); border-radius:3px; padding:13px 12px; font-size:16px; outline:none; }
+textarea.in{ resize:vertical; min-height:74px; }
+input.in:focus, select.in:focus, textarea.in:focus{ border-color:var(--cyan); }
+input.in::placeholder, textarea.in::placeholder{ color:#56616b; }
+
+/* selector buttons */
+.opts{ display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
+.opts.three{ grid-template-columns:repeat(3,1fr); }
+.opt{ background:var(--field); border:1px solid var(--line); border-radius:3px; padding:14px 8px 12px; text-align:center; cursor:pointer; min-height:68px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; }
+.opt b{ font-family:var(--sans); font-weight:700; font-size:14.5px; line-height:1.15; }
+.opt span{ font-size:12px; color:var(--muted); }
+.opt[aria-pressed="true"]{ background:var(--cyan); border-color:var(--cyan); }
+.opt[aria-pressed="true"] b{ color:#00151a; }
+.opt[aria-pressed="true"] span{ color:var(--cyan-ink); }
+#projOpts .opt:last-child:nth-child(odd){ grid-column:1 / -1; min-height:52px; }
+.opt.slim{ min-height:0; padding:12px 6px; }
+.opt.slim b{ font-family:var(--mono); font-weight:600; font-size:12.5px; letter-spacing:.08em; text-transform:uppercase; }
+
+/* callout like the calculator */
+.need{ border-left:3px solid var(--cyan); background:var(--field); padding:12px 14px; font-size:13.5px; margin-top:4px; }
+.need.ok{ border-left-color:var(--good); }
+.need.err{ border-left-color:var(--bad); }
+
+/* toggles */
+.tog{ display:flex; align-items:center; gap:14px; padding:12px 0; cursor:pointer; }
+.tog + .tog{ border-top:1px solid var(--line-soft); }
+.tog input{ position:absolute; opacity:0; width:1px; height:1px; }
+.sw{ width:50px; height:30px; border-radius:15px; background:#2a3138; position:relative; flex-shrink:0; transition:background .15s; }
+.sw::after{ content:""; position:absolute; top:4px; left:4px; width:22px; height:22px; border-radius:50%; background:#e7dfe8; transition:transform .15s; }
+.tog input:checked + .sw{ background:var(--cyan); }
+.tog input:checked + .sw::after{ transform:translateX(20px); background:#fff; }
+.tog input:focus-visible + .sw{ outline:2px solid var(--cyan); outline-offset:2px; }
+.tog .t{ font-family:var(--sans); font-weight:600; font-size:15px; }
+.tog .t small{ display:block; font-family:var(--mono); font-weight:400; color:var(--muted); font-size:12px; margin-top:2px; }
+
+/* buttons */
+.btn{ display:block; width:100%; border:0; border-radius:3px; background:var(--cyan); color:#00151a; font-weight:700; letter-spacing:.12em; text-transform:uppercase; font-size:14px; padding:17px; cursor:pointer; margin-top:18px; }
+.btn[disabled]{ opacity:.45; cursor:not-allowed; }
+.btn.ghost{ background:var(--field); color:var(--text); border:1px solid var(--line); }
+.btn.sm{ display:inline-block; width:auto; padding:10px 14px; font-size:12px; margin:0; }
+.linkbtn{ background:none; border:0; color:var(--cyan); padding:0; cursor:pointer; font-size:13px; text-decoration:underline; text-underline-offset:3px; }
+
+.sending-as{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.sending-as b{ font-family:var(--sans); font-size:15px; }
+.muted{ color:var(--muted); }
+.small{ font-size:12.5px; }
+
+/* success */
+.done{ text-align:center; padding:34px 18px 26px; }
+.done .big{ font-family:var(--sans); font-weight:700; font-size:54px; line-height:1; color:var(--cyan); margin:10px 0 6px; }
+.done h2{ font-size:14px; letter-spacing:.16em; text-transform:uppercase; margin:0; }
+.check{ width:58px; height:58px; margin:0 auto 6px; border:2px solid var(--cyan); border-radius:50%; display:grid; place-items:center; }
+@media (prefers-reduced-motion:no-preference){ .check{ animation:pop .45s ease-out; } @keyframes pop{ 0%{ transform:scale(.6); opacity:0 } 70%{ transform:scale(1.08) } 100%{ transform:scale(1); opacity:1 } } }
+
+/* lists */
+.item{ padding:14px 16px; border-top:1px solid var(--line); }
+.item:first-child{ border-top:0; }
+.item-top{ display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
+.item-top b{ font-family:var(--sans); font-size:15.5px; }
+.badge{ font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; padding:4px 8px; border-radius:2px; border:1px solid var(--line); white-space:nowrap; }
+.st-new{ color:var(--cyan); border-color:var(--cyan); }
+.st-contacted,.st-appointment{ color:var(--warn); border-color:#5a4520; }
+.st-sold{ color:var(--good); border-color:#1f5a35; }
+.st-paid{ background:var(--good); color:#03210f; border-color:var(--good); }
+.st-dead{ color:var(--muted); }
+.empty{ padding:26px 16px; text-align:center; color:var(--muted); border:1px dashed var(--line); border-radius:3px; margin:16px; }
+.stats{ display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--line); border:1px solid var(--line); border-radius:4px; overflow:hidden; margin-top:18px; }
+.stats.four{ grid-template-columns:repeat(4,1fr); }
+@media (max-width:460px){ .stats.four{ grid-template-columns:repeat(2,1fr); } }
+.stat{ background:var(--panel); padding:12px; }
+.stat small{ display:block; font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); }
+.stat b{ display:block; font-family:var(--sans); font-size:22px; margin-top:4px; }
+.stat b.c{ color:var(--cyan); }
+.steps{ margin:0; padding:0; list-style:none; counter-reset:s; }
+.steps li{ counter-increment:s; display:grid; grid-template-columns:30px 1fr; gap:6px; padding:12px 0; border-top:1px solid var(--line-soft); }
+.steps li:first-child{ border-top:0; padding-top:0; }
+.steps li::before{ content:counter(s); color:var(--cyan); font-family:var(--sans); font-weight:700; font-size:16px; }
+.steps b{ font-family:var(--sans); display:block; font-size:15px; }
+.tier{ display:flex; justify-content:space-between; padding:10px 0; border-top:1px solid var(--line-soft); }
+.tier:first-child{ border-top:0; padding-top:0; }
+.tier b{ font-family:var(--sans); color:var(--cyan); }
+
+/* admin */
+.filters{ display:flex; gap:6px; overflow-x:auto; padding:14px 16px 2px; scrollbar-width:none; }
+.filters::-webkit-scrollbar{ display:none; }
+.chip{ background:var(--field); border:1px solid var(--line); border-radius:2px; padding:8px 10px; font-size:11.5px; letter-spacing:.1em; text-transform:uppercase; cursor:pointer; white-space:nowrap; }
+.chip[aria-pressed="true"]{ background:var(--cyan); border-color:var(--cyan); color:#00151a; font-weight:600; }
+.kv{ display:grid; grid-template-columns:auto 1fr; gap:4px 12px; font-size:13px; margin-top:10px; }
+.kv dt{ color:var(--muted); }
+.kv dd{ margin:0; overflow-wrap:anywhere; }
+.status-row{ display:grid; grid-template-columns:repeat(6,1fr); gap:4px; margin-top:12px; }
+@media (max-width:480px){ .status-row{ grid-template-columns:repeat(3,1fr); } }
+.status-row button{ background:var(--field); border:1px solid var(--line); border-radius:2px; font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; padding:9px 2px; cursor:pointer; }
+.status-row button[aria-pressed="true"]{ background:var(--cyan); color:#00151a; border-color:var(--cyan); font-weight:700; }
+.pay-row{ display:flex; gap:8px; align-items:center; margin-top:10px; }
+.pay-row input{ max-width:120px; padding:9px 10px; font-size:15px; }
+.new-dot{ display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--cyan); margin-right:8px; vertical-align:middle; }
+.demo{ background:#1a1405; border:1px solid #5a4520; color:var(--warn); font-size:12.5px; padding:9px 12px; border-radius:3px; margin-top:14px; }
+.toast{ position:fixed; left:50%; bottom:calc(20px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%); background:var(--cyan); color:#00151a; font-weight:600; padding:12px 18px; border-radius:3px; font-size:13.5px; z-index:20; max-width:90vw; }
+.foot{ text-align:center; margin-top:30px; font-size:12px; color:var(--muted); }
+.foot button{ font-size:12px; color:var(--muted); }
+.hidden{ display:none !important; }
+.intro h1{ font-family:var(--sans); font-size:24px; line-height:1.15; letter-spacing:-.01em; margin:0 0 10px; max-width:22ch; }
+.intro p{ margin:0; font-size:14px; max-width:46ch; }
+.need.warn{ border-left-color:var(--warn); }
+.need.warn b{ color:var(--warn); font-weight:600; }
+.badge.ps-pending{ color:var(--warn); border-color:#5a4520; }
+.badge.ps-approved{ color:var(--good); border-color:#1f5a35; }
+.badge.ps-declined,.badge.ps-deactivated{ color:var(--bad); border-color:#5a2424; }
+.kv .badge{ font-size:9.5px; padding:2px 6px; margin-left:4px; }
+.count{ display:inline-block; background:var(--warn); color:#1a1405; border-radius:9px; font-size:10.5px; padding:1px 6px; margin-left:4px; letter-spacing:0; }
+.opt[aria-pressed="true"] .count{ background:#00151a; color:var(--cyan); }
+.act-row{ display:flex; gap:8px; margin-top:12px; }
+.act-row:empty{ display:none; }
+.stat b.w{ color:var(--warn); }
+input.in.code{ font-size:24px; letter-spacing:.4em; text-align:center; font-weight:600; }
+.sans{ font-family:var(--sans); }
+.track{ display:grid; grid-template-columns:repeat(5,1fr); gap:5px; margin-top:14px; }
+.track div{ font-size:10.5px; line-height:1.25; color:var(--muted); letter-spacing:.02em; }
+.track div::before{ content:""; display:block; height:5px; border-radius:2px; background:var(--line); margin-bottom:7px; }
+.track div.on{ color:var(--text); }
+.track div.on::before{ background:var(--cyan); }
+.track div.cur{ color:var(--cyan); font-weight:600; }
+.track time{ display:block; color:var(--muted); font-weight:400; margin-top:2px; }
+.next{ margin-top:10px; color:var(--muted); }
+.next.installed,.next.paid{ color:var(--good); }
+.item.dim .track div.on::before{ background:#3a4651; }
+.upd{ display:inline-block; font-size:10px; letter-spacing:.1em; text-transform:uppercase; background:var(--cyan); color:#00151a; padding:2px 6px; border-radius:2px; margin-left:6px; vertical-align:2px; font-weight:600; }
+.st-signed{ color:var(--good); border-color:#1f5a35; }
+.st-installed{ color:#00151a; background:var(--cyan); border-color:var(--cyan); }
+.status-row{ grid-template-columns:repeat(7,1fr) !important; }
+@media (max-width:520px){ .status-row{ grid-template-columns:repeat(4,1fr) !important; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <div class="brand">
+      <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAOYAAABqCAYAAACoGC0YAAAuA0lEQVR42u19eZwkRZX/90VmdVfX0dXHHBwqsMiN4HqhKwiu93rtsgss4iqKqLsqK96oPwd0VVYRb9cTz1UYF+8Tj0E5BBxgZvqoq4+5b5iB6ZnuqsoX398fGVld08xwTGf19HRX8CmmqyIzIzPyvfi+940XL4BWaZVWmXVFZqohkl6ru5vzDm/GzTgH51gAFBG2umRagioAzEFq3cK9P2m9ibkmVzROsKyI2FaPtBBzX0IiIkKSPiyutLCPNwYEjAdAYAHAWhij1tpwmDKmPngABrAWMIZ73a+FAFYAEMYQNpI/IzCQye8AwvYIa2FN9JOBa1tco2E9IMYAsCAMCAuB+wFw92CtuDbDezC+u0fY8L7g7tfSWogxRurnAEBgxRrARPcV3ghhjVOn+j2F14UhjGV4DKxrBzDGA7BboRsBbLawhQQSwyJy/xQrhS0FfZRIKcDj1uKISoBzlfCNwCLALjFQODFQVYHnMexQBeDBKEQ9QAAaQDxAYBUwnlWCnlcX6VACCesbKABWFTKhoFXNWuv9rnKajICUGVHMEtl+rMWIMTiiJQFNsoEsqsZgk7W2nzR/8DzcKCJrG1C0ZeY+XFlKD+eLdo/ycybAhUJUoBYEqvSMgtaHwIAQArQCEgZCKxADhqpKHwiVSgwhsAwHXjEwBrR+OOraqhgTBBaeWrBGm6gB62s0L8dJuH/GEDNUTLvSGHMsgAkAO621AGgB0BgRB5USDS0WoIGhhQUsxRgBwu8OaR36mfAY46DEOBRyaBUe71DSWpUQVEEFxYNnLSZRKmrPDY5iYMRa61CwEYSntIX6uRJZAiZETUH9WND9LfW/rRWA4WM3oLkNEZh1wyF8ToSYbyatBcAYa1IAMjBT3qW122HMjwB8WUTujRBURLSlhQ8RVAMR2z7M5yfUfikp5n4QKUrocZIQ0MIas5fl4V6QEJNWlYGFMcZCQAgEhEfC82jFAGpgAqU1BqYa1GxbTeHVxKSCABcHp8st0b3MlCnbDqAPwHHW2p8bYy4BIA8CCjwIgUgWWRnDmGSQAQDuwi5kka2P8LuwS7ALyGaz+x31p54z1VzfhV0y5Zr146fWAbsEyO7VP2MYq3/PIMNd2AUAjW1KdOXweJEMMhgbG0MmQ9dOFtn6MdmHPIPrA07eHxqPEwCyG7sljTSB3QZIZwPgSB84FcDTATwTwHENl5yw1t5ojPmAiKxpKec+yR45fCOSD+yxvzbWHGGI+4zg3UEbttPACBH+B1ASIGsQtLnzqxC0A1UAqABoA9sm35YAENYgkgDbCRsazEDbmH11QPzzhCJVg/lx5WT5T5AeZuLdMHxolEpsJ1lkWL7bkoam9nmG5MtJ/ozKgPWim0j+c4Sc0btpdVg4W9C9hu/oGuamriI3dvTz8mY22XMHO3NF3tpd5ECmyLtS/TwMpGAJ63aZPxPPftxxoAXUhCaW74TCc95zq0yfwIs+FJExAD8H8PNqlWd5BlcY4CWAWQzg/0heKSJXOeW089rvDH1vm1zPx6OKixIW4xPAxnHga5ic3ouvf+6Gh6dJrdKFD3pie5SQijWfrZ0qm7GUHq6aIUsmGpVJJpTsc0P3DxoYw1ZpQp87pTMNv72JqrtIqkPPq93v/rzurKWhDKaGeG13ifnuEoupAl/cWBd3WwtG+JzOsha6S1yVGuT3sJReWDeDFsxeiqk6EMqEXt9SzBnr/7qCktWzSG5XqpJkEARvmNfvwfVLzxq+oHuIQ915zWfz/FJjXax+LGkwymSmyGU9RY5kCywninzy/tqbqQgHaZigbFH2M9XpIioilmRCpO0WAP8EayZgYcXzPk3yZCNGGbcgHhqED44aZTKo4f0IkLTGmKri2ia1GLK+VbxBq/YEtfADi+trJ8gKLKWHfcwzm5b4zgsFrYXKKbcY4vUudCNjrb2G83OcNBCxmyu4xFbtsdZCKoLrKqfKkGNGbYyDgIGIdm/gE3zBxcbDjprYofF2XAPS4DzYfd/gjPWEk4DJKJ5WORjK6csNVvG98FXghWTt+Q5V54dJGynKej7e9/EaI2asCqya2I7PRWRQrO39MJwesRW8zzc2Jb7xAzXX4Fh5AD+E4GCQbw0+ZhvJQUf+fL/lYx40n9M4cujYINAHHBH0m6huPhE+PWv4ld4yS5lBHfHyPKeZhE9mkOdmC1zdXeRIuqjXPZq2ZuxlROGr9UiaVjkYqGkBGBEZFuIn4QsxZ5M8yaGmmfNKeb5oNs+XBxW82KptI8xNepLcHNXF6scOgE9Yw2604Z0Ja2s2wEQtMB8HKDjv4X2ImXoRNC7EzLTIn9mAnGJh/9dJQBLA8+Y858BQGbqHmVPBO6AYq4nZutvDR6K62L23q8TuIi5pV7sIYkzg4YvVU6SMpaGPOzsQEw+NOW2Vg1KsiND3/TutxTr325mR+M7Zp/5hqAyBwet8D4eJgbEBvoITZENEBsXtx2ZKPLlWxWtoTRAAhd2bVn/j4Qifg6GYYqKmbGsN6EE2Z0nSiMgDgF3lBs2THGurczJUjzQ4X7StwBNZxSXGwqsKVu9J4HtNIXwAnL2MfqD4iK0hWxEk95ja1XjuMRPuJXC2KObko7dY2Vmhn86/XBcKgTkMwOK96uag+S4GH2INuZqirRbgahwvlUerKI+hIQ8i9t5jcYGXwFPEWBPU8KPghLZbHstUzIyFZEXrgPdaxNwqB1UxjcEW970DCJf1zEGN9CCivWv5TwnaZ6mgYmF+Gpwsf3KT+/ERPksc+q7gIq3gzW3G7prwsLOyGx8HKbjy0bsKM0b+1BUyXFjZKrOgKHWsQQ78OaiUAsB2389crYa3GsWEeLivUsUnItY01vZOCeclOzJ4rxdgkVXTrmKuwdNkO34YkkGzTTHDxaNAuAi4VWZF8TyPzse0qFTm4kofgQgn7sPlDHCMhelUMdfhybIVeGyK8ojFTbcsXs2/TxLnGtiEKu6pfg+/OJCpmJkzZW2YT8cAdMEFHtlyNx+uy5q9JEtV2z3PgwEmxq3dM+cIHxG7aC2ftLuKC7wAtgqsqtTwrdgJH2emPrHE9s01XO5b7KZnTEXxMVwl9kCC4mfOfJm8tYpbQd9ai/nIhIXXJAWlQ8zD3aC5q6NjYmdj3VwxZSdG7LsTCmPFWNRqV+H0tqpDMBurdF8luuFf+WYRHB+IpcJ8uXaS9B2oH+vPoF66F26OZY2vhI+EG7Xqi3wBEEHQIBw+4Af1awQBxPf90EQJAkQ1vu+H5/n1R5Lw+AC+D9arorbqT+0TCCa7IQgEvg+4TGjufjjZUz7c8eF5Qf0naWjbXSoQHxAVEc/z6O4FgC9AwL0UwD2IihjP8zwg2AH4fSKy0SmoxKycdG7FE4wxMMZsF+l5AAinU+YK4dNR5LmBNWd6tCYQ3DB+etsdTYjwMRDRwzfwxAcn8O+mikQQYGR8Al+dDjLPlGJGyqcwOBMGZ+3/jvz93uJeVb6/9837/j4u5e+vat9dEB3oeY/ifvy9/txf296U7/s8IWq24Qdr7TZSb9ix44EPisgDcSmnu44l2QGLE93PqyOEPuTzATmzMlPggirwLqOgitlRCXBtRAbF2t4PISBlzwjelwLMhEGyGphP4GmyZzrIPIOxsjbrZK/Fyj46smwhYN7a3Z37PcleABLT5H90jb8BcBQAKLR/St0h3XW4SqxN41LPQ4/xbJsN8CWcJltc9E+8c5bniyaLON9W7Zmq1ipxoz5JbpouMjcVMRtG+MBa+zpjTSd8WASBRBacD9/CBxEEEgDiN96WDzqT8KHIFZ7sTF9/0sqsW5yTbYQ/+Q1mXAD4PhvN1yAIJDSJ6ydIg10q7nhX70zeurnsN46KUr9W1F4AQAPA8xuEP5DAh7j7IgIwCE3MQESz4slFBuZlgHkaYP9LxPt353PqtAUXsKp4kuehHQA9eHfOCf/SmZWJYZ7GCs7ziWrVMwO1iPCRGNHSzVkuXsFFY8T7DA1qigeZeuxzlq1yqMmZ8kckVVU3k1wYmaLTNGV9AFDl59wyvM0kF8Vx7YPcWwLSPJVMJIv8SWqQpXSJKxL9+0/fMa3ilm1ly/xIrqAbuwrc0t7HS+pIOs0yY+RPa/3lY34vVQT4Lgz+KTRrcQKAbQ7xDhg1RSQg6Vtrz3KezEoR2doEgmmG9RIGIrpuNV+VIJ5mAVrF9bVTZUXs+VqdmZoo8ymgfaUvZs8EkK+cim/HhcwzppitJMOPaRBznabtESVUq9XiIH6MW5N5ojHmRIRMyF8wyT0FhyzhA9gn7GT3ji14naEdp5jd4+P4fOyET3g9ntzPttVirzAKE4itVdUsgUgQIvP0B7jWIqzZapeJ0Ir3jwjDGbclEomhiEeb7vtWxQsAJK211gTBnw55/9KROps34m2BxaKaABXiajxFtsVO+LglYlu6cEmHxRlikarVzA9qJ8s9secLapVZhZae+/cMVVZc+o8vxeEORBkKNNDf05JKLZFMH9L+pfP1ukf5rGSBpY5+zbcP8Nv1lJFxk0sAFhX5Nz0lzS8qaDlX1Nuwit2uPYlP+1tl9nlLAKza9xuDNmvtGGCumS6qRWYsyZMgeFa4j5H5g4jsdvOXhyBihpkHTibbVHFFG9EGMb4NcE1Tkly5Ocsq8V+iJlcTk6pa82mcJjuagMytMgvR8iyqVsP82Pr5mNDSsbF6JUkyoNZYe0Ec1z7YaJnO86JsXsudA7qpvU8/3lgXd1uL1vAFvcMcXlzQjdl+/T+QEntbrTLrFNP5gPoLp5T3cw+PcpntzDSuK+6TILmSpFXlIMn2qO6Q66wlNCAlNcjDOwr8c3ZQV6YGeDv62RO3WVnf8GcT07kR/dVhZe3rKnKgLc8TGk3cOEvLlJ1FaOlMzTMB8yL3epZKStYgzGw3LdJHRIgAZyLcrk9g7E9FpALg0DRj3dpH4+N9nuAwCBIUfBKnyv1NIXyuEtu2B/9pqzilCtNREXyhepIU95dJvVXmGFpS9Wdu4n+c5CnTRctGU7VW41eia1fI0xvb3SdKzHITNtnHZ6cHdF1XQUc7CvxeMwmf7iGemi6xlM1zdUeBv8Uok2CI2s14xBZizh7fkqzwyTDmhe7nn4jIAACZDlq6wAHdsYNdRvBiALTWLm8HVkUB7fs8cbaiaJRqkkxoApeLNVqzMIE0g/CpJyyXmo/LfbE1CoJaFR/DMTLRzEzqLcWcJUVEaH37LgDtACrVavWTUdU0L+0BQFcWrzAengBAjDHfdwK1b9JilEmsZ++sRE6XhjK7FhcmjD3RetBAzLcfboOeA0fmsK2OAbyKVfsswKDm4QfBaS5f0PmtoJm5jpZglc9R1QpJVlVj20aigVC6maRVciu5a9+xsW6fxs4NfGFmlN+pkyyzp7MMABw2wqOyQ7y7s6irOgr8I+5lVxMIHwNSeoo8sqOkK3N5ltOFJpFLrTL7/Er3SZMcIGlJ7p4gT4rTt6yMVZ5ChsEKSv3afpXetdc7xGsX5Lmjpy/cGn7WTAe4++gs8Ju5Qa7NFrTcVuRLm3KP0b4jI/xUV5Gj2UGuSw7yX2dVf7RKc5CyAc2+x6gor4oRLUPSR/kFd/WgSj5rn9cnDUDpXc8TciVd0TvAYi7PW3Ars7MCIdz9HrGez+sqc31PH9ek+/hNSPOUMjnC56SKOpArMp/ai1xqfl/4B0EgZR77ttEL1SjrOckvALgIACxwuzH4KGNIFhWRPiR7rMU/O9Lnrz8xN94V1U3x3QQQywovBswCCrZatUf7nea1gcgXnLDqQVJKAcCjyOTYKN7uB6hUBV6tik+CQKz7jri2evPMjge4CoRXhRU15mMQYVjfivCZq2gpJJ+jyt/VgVK1RPKoRr9wmm34ABAEvJST5fWNdfXi/MhTN3Nxb0nv7ipyoCfPYnaQ92aLvKXndh7ZlKmIx4hgHUW+NVvkSGde1yX7+aGmmJUOmbvX8L3dQ7q6s8SRtgG+u7FuJspMrseM0GIREJwRBAh837cBginZBSABAmnM6DPlOxvOaTAp6km1pOEYO5k8K0Qsl11gn7fozhV3Ll3b7u9AEGUbmDy2cfv6+vn7+A0BAuPD77LWPslanGNgn26Mccnp7S3GmH8VkY0NS7Om29fKUGgvBUALrDfAjRFi73XClRBcBWzcgwtEsMAzdgPU/K9ncFEb7CLbaS6DyHsPijnrshJ0rOERdhyvVqIWiFlb7cWnsOTRbdDzWNtKlHkKq/Y1bcB4VTBc3YrPN2uPk1nDPqryf9gqEUqOkfpJkh1xIWVjX7PGFzpCiap67X58SwEpj1vLjmyZf+gpcWNXkT8EgO4SP9tb1GJnUfs7BnhGI0E0k4opADKj+rnMMFelilryVvIl8aNlaBEsIU2qzKU9gxzuKXIoWeLZB4PwMTOklAaAJXmkMTjf2kN0Qe40i7UIrMX9AP5qgY/XaubpIt67RWQ8DqScgv6wgrc737VijPlqY91eMiDC+4Gz4WExrR234ja1HcfXLWFgTK5NcCW+wkRdiGfKhBWxHUW+1KvhlW3WtluYm/R0+XW0g1d8QhrOWX52FK9OEM+mWE+JX00cf3DmLGcsfaWIWFV9kzGmJzTg8N9BECx3ZqU6E1P2ITyNQsCpZm6UlGuKSbzXeUGwVy4vPuSaYUItNJiuaPytwZyu54MNAghQN4un3i8bTdkgCAx8P6BiayKB9SKybgq62biUMkpBWa3yDAieD0Bo7S/E8wr7UX57HundtBb/BloT0JR2bcBPQZodIn1dg/yxWLzOA556+LNx3iaR74cLgptMBLmEVqeR6ZES3ukpqoFgfMLDf8duUrvEWukVXBRYXOYT1UDMWDDu2pqLibUaVjZ0qupqZ1qtahFA9JuxtXrDFMxvwtkXVkk+Yz9mrAcAi1fz77vLXJMrckMyIjqWMwFS0rdxUc8A/7q4oOWFRf0DSuyckekTd2+9w3xfd4nDuQKHU0N8Y1NImIhcKvETmRJH0gXdmijxdTNN+My0KWtEhKp4lTHmKIcoX3TK2u7m88LPMvpOYOu/LSP9ZaTv6sLfJo/zly3b+/jGY5aR/rJly/zw+zKf0d98aDsH+omu33i/j3COcSZEIDGvSohWqNRqtecaE65QMcCvReQuh5a6L5N3rILzVK0JLMaojiD6ORSA2f1s2eon8BkYMBBzRKqGN0OE+GETZSfakbnAE2sWFwMQFYzu8fCd2EkYZ6Z2reFZno9XJgglzW21FU1oaxai5eQ6QHINyewhuw7wECDYgoB/dGsuq5UK/1b2RSy57239PDlZ0FWZAsvJIj+9F8HjpkieWGL7giH+rKfModwgy5k7eHJTiSCHYG2D/EamxEKmpCPtZZ4TOwkTTQGtZUfXCH+5oMzBzoIWEgM85aAQXTOImOFaP8W5AE4DIIR+VUR2RUjaUqf4TGMR0SAILvY8PBeAwOBb7e1yr3VIuq/zOjpwYcKYTqENNMB3pjADBCBDx0ulavF5a227J8gkc3gvABeU0ASlPF80M8pzE+0421iIBubGynFyc+wkjAuIz1XxNlRwuhLtgZhv1E6RgTmbWKuOlsvoa6B3Od9yPckFLbSM368kKbt383Ekt7sk0dtJHrnPmNslYVjZqZu5eOEw7+gts5TK6/f36ztGaxILvG5Rgat78xxu7+Nzm4JgS2hyO9iVG+FtPSVdnSpyFfp5WOwBDu5aR6znCV0lFroHOJzN681YwXSUHeFgvtNmImaIiGfiRcYzT3O+5bdFZHsLLeMdAKP+TLbbLwDoBWCMMVeJyAbsK/vBlRBAuHEMF1YreHxgIYFXXwq2f5mwuJawFYitdLThTSC9MBwuJiF2uy7XtuMtouhRGijxOZwqmyN0i7HrBAD2BHiPARLWQ3ulav4bT5bdUXaEOTuKh+wgf+3Q8oFx8ug4Vk20yl79nAAABsEHJuPgebNDUW8/fpVgOXPtfXpnup8bO/L8E5Yz9bBsa4Saef1wb5mlxXkdOmwVXx0barrrpwb5lFSe+c6C9mXyvB5L6cWeKWAyxO/cTJEjXUUdSZX45YPtV84YCcEqn6nKqpOX6xrrWiWGfl4eKmVQCV5nLUmyRuVGkk8A9hNJ5Po/N8I3dhRY7hjgRj/PNzXW7bM48y5T4sLeYd7WU+Tq7iL/2hnL+sTQTD1vKb1siT/JFXRdZlCHE6v41NiVpR7ptLMnNcQ7MgNaTBd4J/I84qDGA88kWlJ1qYs9202GTFdLMWNHyldTVVUZqLLCKv9uv/3slGvxJi7qHuWfusocSBb5e2x4BLScqtSjvLirxI2pAd2WWMGrp42a0TKrAV7QVeRQV5Eb2gfqDHFTgtR71vOD3WUdTg/q+vY8L25KW7ORiJiY4Akkx1yc5g37HcFb5UD6N7RIAl5E1YBkLUwVy0vdMf7DCWV2iP+VG9LBbFmHOkr8l0etWBGiLGMyU+Sy5AA3dPRzuPtengLIgSGbGywWjvKwjhJv78prX7bIW1B6cGFTshKEA8vfdg7pilyBQx15/hLL6DczsdZsIX9ERJhI4I0A0gBUjflSo8PdKgeslL6IWBFRBsG7IfhWQEMAPqCX+SJfc8cE+0QlEU2V+aKghguswlZruHN8BX78qONO3fQJnisT1UrwSaGVNrE28PHWA04S74iWwOL97cBRSqSCAJ/C8Z3x7jvilO6oZUxWKviIDdBRo7WBhw/iua6/5jLh48idwzTgljCgQP/cInym1afiIoYEAHbv5pGq+v3QEmGgyoAM3viwSOlQ6cRB9mbKvCdb4FBmQIuJlXzSAflw7vjOQf1md0HL2SL72/MHEADgrrNgiE/tHuLQgiI3ZAv8UVN8vSgtyTDfmilxQ+egjib7gvfPeRO2UTCo/EjEENZq/MeWb3nAg5w/5bfXkdw4yb7qVpIvflilBAXLwrpsgf/Tm+f67rzen+znFQcslE5pDh/liT3DuipX1sFsnjfht0w/apMwUr5+tmVLvHFhSft7SlpIFCtPbgLhYwAguZ6Pz5Z5T3dRi9kib0WJnbNhzrKppmx9cS6Zs7CvBUBrcbfv45eMe4/CuYmKxiGjH+V7jTaZrdVqL1XlHwBcB+Dw8Cx7q0HtHBH5zX7NVwBYBg/PlSBVDt5grX0xBRU1uGUC+NQBx4KKWJBm0zFSCAJzPYiEB/ukhUfgtW6u0Twq2ROx3Wlc4gueKdakqzXz3doJ7SuaFXVjKvggA2QCMX4lwCdxvDw4p+csG0fsIODbohE9IF/78KN5q+wvAorkcUHAd5JcPmV99baAwXsaNiDyHgkpUmv54swQV3bmdSBV1L90rOPj6ibudHw2UnAne3NF3rUor+t6B3kPBtlb3+vj4e6LlI61PLJ3Ne85LK/ruwZ5L9awO3YEcyZs73q+PFvmxlSBq5MFN2e5dO6bsFGwelIDFl1AQYFkKu7wu4a2ZuzTbKXk6GiS4+PHkHwxyQ+Q/D3JB6Yo5ANK/RLJYxrN3UdiOzuG+fJkngO5Iv+ayWufv7L6zNiE0g0KCwZ56cIC78sNclNyFZc8oinq6tLDvHpBWfO9RV3d0f8Y2OHHMngsoXnidnb2jPLmroKuTRdZRJ5Hx24uz260DF7bIEjvnitoGbdy1hWSTKvqjSTLqrpjn+lHqAMkr5qY4PEN53uPhoHsLvPxnUUWM/1aTA1yMJWvvShW4Xd+4lGjTPYWeXN3Xtd0DnBlbgWP2S+B437LlvmsdIn5rpIWsiV+pSkI5q6XG+LHciWu6Srquo4S33wooGVcSqMkPVhchpA33wTgm5HfGZcwCwQE2wD0AMBu7EbYXlrSDYe6ur2UKY009mCPACmkXHaB3diNNNKNx0vDd6SRFgC7RGQszk4XEbq1k7tJ3gngXGuNkqiJ6E4YWQdguQ3sL3zf/52ITDQoJPexrnJqAwRpdgCbMiXcany80PNQMQqzJ94HIUiz5hiZ6CnxY1bMl8TYRKLNvAUi73qISeq+n03696zFO7wapBYYrVUq1wKIOw2lgYguXFc5faJiL0gEoBpz7/hGfH3OrrOcojBhUmHyheoSP5H8KABw2TI/xnZClKnxBmfmbVHqZtVgE8mtJLeRupXULSQ3q+rW8Pf6v9tIbtPwszU8JthE6gZSN4TX0m0ktzq2c7Oq7qDqvdy+vTOaCoqb8HF//ykCyCAILphqorpF4gc0pZFdyRO6Shw8vKj9uTJvwh1NYCJdW10F/UZXQQudA9rnrwoTS++Fmk5WOob45q5hlnJDWmgr8x0HzA7v/4bE+bGmc5TfzZVYygxyQ7K/eua88C0b/RxV/oykpfJ+cvqbrU5Vfne9Z1Dryj+T2ew+2QyzvIHAeYbbt8RS9WZymU+yLWJop2vKLSjx8kUlLXUXdSg9EGZ6b8Z0RPcgT80VWEoNcnX7YENEzaSiSG6UR6dKLHQNcjRT1DAcMP6BIgzxK/M1qSLXZgpc2z6g1xxKSulPV7DCxE/VM4zBSwCINfYGT7w1UV1sQ6AIVfkOYyDW2gdhzHUGqFlrPQPQGlshpOrBg4VtMxZtgCEMKtZaa4yxCiXgMbSuPQisbyxS1kCcYUMAYgCBMeNW7Ssg5hRjzNur1epPReTWOJ/LZUr3ROQuJT8D4D0w5mzVsy7zfbnW1R24eXceLJbQeHvw1fGUeVnC4OikwaXZu/nzzSLLnblnY3gQi6X0dpws/R153igeXuMF9uldWXPRTpFvO0UhRGhGeFk74Smsr9Z8DkfKnlh36XKJtRYNc/GDiv9gYDUw5v6KmI/P2cRa+0XLWu0Gx1TsmZiYODlmtAyjicZ5tCp3Ogy7cYae76luMx5L1XtdihSvGSbtzp3sVuXqcNUWt4yNjR0eSz86hEgN8mW5Erf1DHJDb57fbgoDSkp6FReni3pX5yBHcnnegjyzdUQt8+86h3hPrqir0oPhaqNmRfjk1vDq9JAOZoocauurnTuvTFiSwgkep8pdzub73qNiDQ/A3FPlxyKakuQLnII0JvPyp3z29/v+jpv6aXPtXlOflw2Cd8f9fHuZtAFf1WBAx7dMLvI3C/xBbpCrswX2e3m+KHZhjZSiyEt7Cro6V2TJH+R/AACWb0i15/mrjjzz7Xm9B6vG/6ZZJnWywGd3ltmXG2K+o8hvzBulnKIwn3d+WJXk06PYzjiVf2yMh6tyU8iO6K2T29ehqXOMrp0MlYUwuZU+QPJ4NCH2t66cyl84zbRk7QWxKKe718zdPKkzz75Mifemy/xt93LmYvXv3Lzh4cuZ6i7wj515jqTKXPW4fvak1vKS9hJXJ1dxg7+C74qd8HHTMyf3M5Mu8redBe3LlvQuFNy873yI1Y4UZnx8/GhSd7qMbDc1mrcxtRNmg1a9KoKRWq32imag1sMyzrXaSxqQ7KYmoWbE0B5H5YOhYmofyWQsjHC05KvId+WGWOwtcm1nMzbmcdfKFviSziI350rceFiZS3uG9LZcXkvJVfobly2hKRE+C0d5RXeJG3IFrskUHFpzvqFlTa+eHN35D3EKbBR1s53sdL6XJXn7TETk7AfJrptUzuBVTVLOaCC6sqGt98SEmoIlNL15ZntGeNuCkq7PFnWoLc8TmpXoakFRv7OgwLU9JY70FFjIDuraJiXxMgDQU+RJnUUWegoc7Szy5qYMALNYKYWk7Ny5s1uV653C3BGZl3ELabXKtzTE3r6msW4mypIl4XM98AB7J8kZXUdyYdzL2RrM55Qq+xxq7iB5bCzWSBRCVwwu7C3xvq6CDqfz/GKzfL3DSjx5QVn7Fpb1zq48h9P9TfL3nPKlinp9epBrs3muSxb5nPnmW0bhd29vmOq7ME6FqaPili0ZknknoAMkOw5G6suGAP0GcobfbSYRVKvx+eFaS1KpP4mTCFqyhKanwB90FznQU2L/wr6mEkFX9RR0bbbAv7Y3w9+LUoWs4790jjCfG+T6ZB8/P9+UcjJYXXWwwQ9qj1Nh6us6yX+LtKAaBG+eKd/y4cku/WWDcr6imcqpyq83tHV+nERQNs8Tekq68rCyFhcU+Xvczo5YzT5HKqVXcXF2gBvTg7y8KSYsKR1FHtk1xLsWlNmXLvIvWMFFs2J7+plGDpIXNUwh/Efc5mXE7KryL45YWkOy82Amio7MyPFxPpHKB5xJWyKZbsLc5mQmCOVm5y6sIdkdi8sQoUyZH1hY5mhPUcudA00I7nZ94o3wlVjD7tiVZXIzoK/lBnVLrsjVHQPBefOK8IkUZtmyZb6q3uOmD0rctCkdM1pGYWovj2Jvg6D6wYOJlg8ZmAK+rwHJrmwmagZB8KaGtj4TGxFESmc/e7qH+OeFw1pamOfg4r/w6CYQQc0ZSCfXWT4vW+D6zgFuTg00KS3JLFdKDwAmJmqvaCBj3tUEtIzQ4o8u4mYLycWzIW9QQ/6dNqr+1QU87Cb55FjImX235Sl5m3MbJkg+LSblDHPglHhR9zC3Lixy86JBfi52H7DB5IxV2UmzeBPTncP8Y0+ZQ51Flg44h9EhrpjRvot/crt2bYstbOyhaPn8UO9JpX56NqDl1HusVvkMumTWqvWgh7hNWtdW9QyGARxRgIU3/bbqqSj9rjx/vaCga7oK7GtKkuX4X4IHAO0FvqWzqBt7ytySKvE989GEjRTmOVEOU5JfiFthGlaq/Ma1cf84x4+ZbVn2GsiZL0xONzJ2X3tK339qsq3gTbG05czBnoHqGT0l5juLXJku8FvRkqlZKozhErONPCo9xDs6B3Ukm+et6Gdm3sxZTlUYqv7MIcQucuK4JqHlM0iHRAzn2GZbhr2G+cYclSMhsOt9JI9o4txmRrWetmUzyXislSgJcokfzZV1oKvI/kwz0nzEqJgiQM8afqWrrAOpAkvt+SYELRwKaElSWOHpqlpzftV3moiW/+eUf2yCPGm25qSdDDwPzm9Yt9nkuc3auQ05R+J5B25aY9EqLu4Z5i3dZeazBb0Ty7ngEZNqHSQTdkGRF3aVuLE7ryMdBV4z70zYvYSiyq85FKtWKpW/jVMAGxZCP5XkhBO9H8xGtNwPyv+qHppYq+d5bc4KFNVfkKS1ljXW4mkrYjiH+KaeIW7qKnJ7xyp+YlahkBtAjt/ABd1F3tM9yE3pPIso8sj5yMRGwerHqupOR8b8uBHhYhbwrzvlD0ieeQgoZsQgP5HKHW4KqZ8cTTYhFUm0zO4EVXVB7lzFEtun3ZYT7MOXM9VV1Nu7ityUG+D6rjsqp9dJotmClmu5ZOEwC7153dzRz7fMOxN271Gan3X2U7XKPc+OGS0NSdmzh08IAt7nkOd3cSt/s8qyZfVwvbc3mLQfbhJqRm1d0UA6XREnaqYG+A+5PO9bOMANPf38WqMferAJn45RPrNrSPOLyzrQWeRPsZyJeUn4kBSO8TAqt7sRuhlLuyLl/0QkajXWnj/b0XIKOeOxn22qdIEXHK9Uwjm1mP3wkAgaZVJVV7h3sovkKbGsg3XvtbfA63oLHO4sclUyH27rd9BQyaH5U8lEW5G/7szrmlyJxcTQITCt00y0bByda7Xay5uBliSPDLPc0Sr1D4cKWu7DFD/bpQYhG3Z1bs7cJs+anLqq91ksirmwzCcuGNKVXUPan83zRvSz7aAhU7SOdISvTRV1KJ3nxvY8Pz5fTdgoWL1Lg3AtpKqudJnbYhcyVf1og/Kfe6ig5T6fpaZfnrQyg9c3kwhS1W83xCzHs0bUCXvXMK/oKnO4s8jR7j6+4aAowmSuoMenR3hbZ1n7Ooq8DbezZ7ZuBjRDaBm8s+HFP/ymqNNRfuU6p/x3Tztl48EdzAzJnqDGdaGrqRtJLmrC3KZLrcIjIkuD5DqSvdMOcm+Moy3wnp4812b6uAq3uq3QZ3L6ZCk9gNKR53eyRR1Kl1lqG+JL5jVabtmyJaPUslOYIXJbthnB6kHAyxtib//tUETLfTzTxQ2pSL7VTNRkwH9v2E4hnvDFaPVJkRd3D+i2jj7dnOibYfPR3UPvKP+xs8S13YMcSeb51XmplFOE64KGELD3NgktcxpwxMXe9rv8NsJD2ESJfEpV/WNDUq3nxa+cIdkjItCANzvVrJB8xrTbaiBcuor8Va7AUnaQ92SW88QZIVwcaudG2dUzwmWLijqQy2t/uNB6ns1Z7qU0S2iCwAWrq27ZFbM51jDaX9awpOmNALDsEN+EqIEIOlVVd7tVIfc4/7xZRFCU/5Yuzcv0899G/t0Qn901pAM9JfZ15/WLM6SY4TrLMj/eWeJoT4lr0wW+vbFuXqIla3wpVR27qJ+Kc7Svo+Uokxpo3k0vjGwjs4c6Wj6UnOGHG6yODzXVpCU/0zDIvS0WC2eSfPnigjKHsgUOY0UY2dQ0czIKrB/lM9MljmTzHEk1I8PCISZQLlidf3Av+MGJiYnjGhInmxg+CWcqX9hALF3RDKGdBURQWlVLjpzZ07BuM66+bNyFeoEGusFZOffviWP/mCjb3TCP7ynocGaAG9sH+WeMMllfgRJlJYjnY7CU3slkW9dq/rh3hCs7i1qsb1A0n31LVvl30eoOakgmNKU95Z1OiDY/yAcXzBW0nNqftRpf2kAE/bnJbb7SDQJU5Y9iIoLCTWbz/HB2kOtyA7p+QT8vbeZzZIt818IyhxeVWUqV+P/mowkrjWgpIlZVbzDGnG9h99SC2gXtfnsegIdKBWgPDwXaOeV8us9e15zABDABJJNJAJAKKl472msAzrGKrxkPYmE/4on3oZg3IZo1yikiqsrrjcEFAKDQd3jwbpzARCIJEEjKBCaYRJLAhCD8N+pHmQAQ1oXfXT/b8FgIkOTExASSSQjGGWii/XrPN88gYVSDlyUSiV9Oq2/dYJnrQ5dJ4ie0drHArGsbx6WP68DYjgkYZiF2HOIlYc2DIDKATsAgDQhB7oFYAzEdYPh9TGw2IxyH+FXoeBI2YZGgQGoGTxxTfLWdaFMP9+/swAtwHR7AleGmRPNKMSOlJHk8LO6GQTssAhg77o4zALzwH9C6rbEMDKy1YoyxFhYGgLUQY+q7gjo7Kvy/hYqBEDDtFjAGuB/A6QC2ARCJa8en2eUaEMARFlhhgFzY53ane34DGAEsLUADA1gLGBCAsYAYGER9Cxix1oaKScB4RqL+D1u01qohgYznwQdsATBPARAg7GAe4IN4ENGeEb5GFR+zFhvbiD0+ULGwSQVSFsaAtioGE2JgQOPbUL4saQ0IA2MUsNYIQJgECE+sHRdj9hjYdguTgSJjgT1Vi4XG4u1jT5IfYSk9nD+3Bu1Hq5huZNdvGGNeP1ONW2s/43ne5XMRLRuU0xeRgORbAXx+ptu31l7ted4V00bNKyG4CImOAL/wjT1NPLMDAhI2SWvaSUsIqvBMDYCA8EArhEH4L0RCibMUQGgStNYTmpp42GMElhZJWOsBSAYwN0ycKJfNR6UE3P6Ybp9GAbBMgQEPCKKe8AAqIB4AVXVmqhV4Rjx4dTPW1YnneQSUCjA8p27aigcQnqcARFW9ildZ6tqdy9tuR337ZVVNAl4boLs9D6KAgYLwYKMtOz14ooBAFZ7nub4P+xPq+tHzItdBADVw76G+/6eqASDwPMBwp7OIDly4RYglFBwvlWA535vImpfAx300GFdrDEQNEp4FQ1mwqhDxkoBJWoM9nhq1oSxBTX0n0jZjTNpaiBGMqcGEQj166IL1klUf3wQoOG+Ob8neKq0SA/5Lqw9mmPxpYPBmsvNV5pFDz4MTPMFY3YTQb54JGbHziexplVZplUOg/H+vhUWcNmPjNQAAAABJRU5ErkJggg==" alt="Revamp Pros">
+      <div class="brand-txt"><b>JNM</b><span>Referral Program</span></div>
+    </div>
+    <div class="earn"><small id="earnLabel">You earn up to</small><strong id="earnAmt">$800</strong></div>
+  </div>
+  <nav class="tabs" id="tabs" role="tablist"></nav>
+</header>
+
+<main class="wrap" id="app"></main>
+<div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+
+<script>
+/* ============================================================
+   CONFIG — fill these in when you deploy (see README).
+   Leave SUPABASE_URL empty to run in demo mode (data stays on this device).
+   ============================================================ */
+const CONFIG = {
+  SUPABASE_URL: "https://pxrhtsaoufpwavcrvlei.supabase.co",
+  SUPABASE_ANON_KEY: "sb_publishable_2s6I4JiAqCjMRflpRnku1w_2Tp3p36v",
+  FORMSPREE_ID: "xeaawrpb",  // emails you on every application and referral
+  COMPANY_PHONE: "(561) 839-3644",
+  PAYOUT_TERMS: "Payout is sent after the job is installed. One payout per address. You'll need a W-9 on file before your first payout."
+};
+
+const DEFAULT_TIERS = [
+  { key:"kitchen",      label:"Kitchen Remodel",              amount:800, sort:1 },
+  { key:"bathroom",     label:"Bathroom Remodel",             amount:500, sort:2 },
+  { key:"windows",      label:"Impact Windows & Doors",       amount:500, sort:3 },
+  { key:"construction", label:"Full Construction / Addition", amount:800, sort:4 },
+  { key:"driveway",     label:"Driveway",                     amount:300, sort:5 },
+  { key:"gutters",      label:"Gutters",                      amount:250, sort:6 },
+  { key:"other",        label:"Other / Not sure",             amount:250, sort:7 }
+];
+const PARTNER_TYPES = [
+  { key:"Realtor",    hint:"Licensed agent" },
+  { key:"Contractor", hint:"Trade or service pro" },
+  { key:"Homeowner",  hint:"Past client or neighbor" },
+  { key:"Affiliate",  hint:"Anyone else" }
+];
+const STATUSES = [
+  { key:"new", label:"New" }, { key:"contacted", label:"Contacted" }, { key:"appointment", label:"Appt" },
+  { key:"signed", label:"Signed" }, { key:"installed", label:"Installed" }, { key:"paid", label:"Paid" }, { key:"dead", label:"Dead" }
+];
+const ORDER = ["new","contacted","appointment","signed","installed","paid"];
+const STAGES = [
+  { key:"contacted", label:"Contacted" }, { key:"appointment", label:"Appt set" }, { key:"signed", label:"Contract signed" },
+  { key:"installed", label:"Installed" }, { key:"paid", label:"Paid" }
+];
+const STAMPS = ["contacted_at","appointment_at","signed_at","installed_at","paid_at","dead_at"];
+const lastUpdate = r => [r.created_at, ...STAMPS.map(k => r[k])].filter(Boolean).sort().pop();
+function statusPatch(r, to){
+  const now = new Date().toISOString(); const p = { status:to };
+  if (to === "dead"){ p.dead_at = now; return p; }
+  p.dead_at = null; const i = ORDER.indexOf(to);
+  ORDER.forEach((k, idx) => { if (idx === 0) return; const col = k + "_at"; if (idx > i) p[col] = null; else if (idx === i && !r[col]) p[col] = now; });
+  return p;
+}
+const PSTATUS = { pending:"Pending", approved:"Approved", declined:"Declined", deactivated:"Deactivated" };
+const DEMO_CODE = "123456";
+const shortDate = iso => iso ? new Date(iso).toLocaleDateString("en-US", { month:"short", day:"numeric" }) : "";
+
+/* ---------- helpers ---------- */
+const $ = (s, el=document) => el.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+const money = n => "$" + Number(n || 0).toLocaleString("en-US", { maximumFractionDigits:0 });
+const digits = s => String(s || "").replace(/\D/g, "");
+const fmtPhone = s => { const d = digits(s).slice(-10); return d.length === 10 ? `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}` : (s || ""); };
+const fmtDate = iso => iso ? new Date(iso).toLocaleDateString("en-US", { month:"short", day:"numeric", year:"numeric" }) : "";
+const validEmail = e => /^\S+@\S+\.\S+$/.test(String(e).trim());
+const appLink = () => location.origin + location.pathname;
+const store = {
+  get(k, d){ try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
+  set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+};
+function toast(msg){ const t = $("#toast"); t.textContent = msg; t.classList.remove("hidden"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.add("hidden"), 2600); }
+function liveFormat(input){ if (!input) return; input.addEventListener("input", () => { const d = digits(input.value).slice(0,10); let o = d; if (d.length > 6) o = `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`; else if (d.length > 3) o = `(${d.slice(0,3)}) ${d.slice(3)}`; input.value = o; }); }
+function clearApp(){ const a = $("#app"); a.oninput = null; a.onchange = null; return a; }
+
+/* ============================================================
+   DATA LAYER — Supabase when configured, local demo otherwise
+   ============================================================ */
+const LIVE = !!(CONFIG.SUPABASE_URL && CONFIG.SUPABASE_ANON_KEY && window.supabase);
+const sb = LIVE ? window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, { auth:{ persistSession:true, autoRefreshToken:true } }) : null;
+
+const demoDB = {
+  load(){ return store.get("jnm_demo_db3", { tiers: DEFAULT_TIERS, partners: [], referrals: [] }); },
+  save(db){ store.set("jnm_demo_db3", db); }
+};
+const demoSess = role => "jnm_demo_sess_" + role;
+const rpc = async (fn, args) => { const { data, error } = await sb.rpc(fn, args || {}); if (error) throw error; return data; };
+
+const api = {
+  async tiers(){
+    if (!LIVE) return demoDB.load().tiers.slice().sort((a,b)=>a.sort-b.sort);
+    const { data, error } = await sb.from("payout_tiers").select("*").order("sort"); if (error) throw error; return data;
+  },
+
+  /* sign-in (email code) — the same for partners and the owner */
+  async email(role){
+    if (!LIVE) return store.get(demoSess(role), null);
+    const { data } = await sb.auth.getSession(); return data.session?.user?.email || null;
+  },
+  async sendCode(email){
+    if (!LIVE) return;
+    const { error } = await sb.auth.signInWithOtp({ email, options:{ shouldCreateUser:true } }); if (error) throw error;
+  },
+  async verifyCode(email, code, role){
+    if (!LIVE){ if (code !== DEMO_CODE) throw new Error("That code isn't right. In demo mode, use " + DEMO_CODE); store.set(demoSess(role), email.toLowerCase()); return; }
+    const { error } = await sb.auth.verifyOtp({ email, token:code, type:"email" }); if (error) throw new Error("That code isn't right or has expired. Request a new one.");
+  },
+  async signOut(role){ if (!LIVE){ store.set(demoSess(role), null); return; } await sb.auth.signOut(); },
+
+  /* partner */
+  async myPartner(){
+    if (!LIVE){ const e = store.get(demoSess("partner"), null); return demoDB.load().partners.find(p => p.email === e) || null; }
+    const d = await rpc("my_partner"); return (d && d[0]) || null;
+  },
+  async apply(p){
+    if (!LIVE){
+      const db = demoDB.load(); const email = store.get(demoSess("partner"), null);
+      if (db.partners.some(x => x.phone === digits(p.phone) && x.email !== email)) throw new Error("That phone number is already on another partner account");
+      const code = (p.name.replace(/[^A-Za-z]/g,"").slice(0,4) || "JNM").toUpperCase() + "-" + Math.random().toString(36).slice(2,6).toUpperCase();
+      db.partners.push({ id:crypto.randomUUID(), code, email, name:p.name, phone:digits(p.phone), partner_type:p.type, brokerage:p.brokerage, company:p.company, status:"pending", created_at:new Date().toISOString(), decided_at:null });
+      demoDB.save(db); return;
+    }
+    await rpc("apply_partner", { p_name:p.name, p_phone:p.phone, p_type:p.type, p_brokerage:p.brokerage || "", p_company:p.company || "" });
+  },
+  async submitReferral(r){
+    if (!LIVE){
+      const db = demoDB.load(); const e = store.get(demoSess("partner"), null);
+      const partner = db.partners.find(x => x.email === e); const tier = db.tiers.find(t => t.key === r.project);
+      if (!partner || !["pending","approved"].includes(partner.status)) throw new Error("Your account can't send referrals right now");
+      db.referrals.unshift({ id:crypto.randomUUID(), partner_id:partner.id, client_name:r.name, client_phone:digits(r.phone), client_address:r.address, project_type:r.project, notes:r.notes, consent:true, status:"new", payout:tier.amount, created_at:new Date().toISOString(), paid_at:null });
+      demoDB.save(db); return tier.amount;
+    }
+    return rpc("submit_referral", { p_project:r.project, p_client_name:r.name, p_client_phone:r.phone, p_client_address:r.address, p_notes:r.notes || "", p_consent:true });
+  },
+  async myReferrals(){
+    if (!LIVE){
+      const db = demoDB.load(); const e = store.get(demoSess("partner"), null); const p = db.partners.find(x => x.email === e); if (!p) return [];
+      return db.referrals.filter(r => r.partner_id === p.id).map(r => ({ id:r.id, client_name:r.client_name, project_label:(db.tiers.find(t=>t.key===r.project_type)||{}).label, status:r.status, payout:r.payout, created_at:r.created_at, ...Object.fromEntries(STAMPS.map(k => [k, r[k] || null])) }));
+    }
+    return rpc("my_referrals");
+  },
+
+  /* owner */
+  async isOwner(){ if (!LIVE) return !!store.get(demoSess("owner"), null); return !!(await rpc("is_owner")); },
+  async allReferrals(){
+    if (!LIVE){ const db = demoDB.load(); return db.referrals.map(r => ({ ...r, partners: db.partners.find(p => p.id === r.partner_id) })); }
+    const { data, error } = await sb.from("referrals").select("*, partners(id,name,phone,email,partner_type,brokerage,company,status,code)").order("created_at", { ascending:false });
+    if (error) throw error; return data;
+  },
+  async updateReferral(id, patch){
+    if (!LIVE){ const db = demoDB.load(); Object.assign(db.referrals.find(x => x.id === id), patch); demoDB.save(db); return; }
+    const { error } = await sb.from("referrals").update(patch).eq("id", id); if (error) throw error;
+  },
+  async partners(){
+    if (!LIVE){ const db = demoDB.load(); return db.partners.map(p => ({ ...p, referrals: db.referrals.filter(r => r.partner_id === p.id) })).sort((a,b) => b.created_at.localeCompare(a.created_at)); }
+    const { data, error } = await sb.from("partners").select("*, referrals(status,payout)").order("created_at", { ascending:false });
+    if (error) throw error; return data;
+  },
+  async updatePartner(id, patch){
+    if (!LIVE){ const db = demoDB.load(); Object.assign(db.partners.find(x => x.id === id), patch); demoDB.save(db); return; }
+    const { error } = await sb.from("partners").update(patch).eq("id", id); if (error) throw error;
+  },
+  async saveTier(key, amount){
+    if (!LIVE){ const db = demoDB.load(); db.tiers.find(t => t.key === key).amount = amount; demoDB.save(db); return; }
+    const { error } = await sb.from("payout_tiers").update({ amount }).eq("key", key); if (error) throw error;
+  }
+};
+
+async function notifyOwner(payload){
+  if (!LIVE || !CONFIG.FORMSPREE_ID) return;
+  try { await fetch("https://formspree.io/f/" + CONFIG.FORMSPREE_ID, { method:"POST", headers:{ "Content-Type":"application/json", Accept:"application/json" }, body:JSON.stringify(payload) }); }
+  catch (e) { console.warn("Notify failed", e); }
+}
+
+/* ============================================================
+   STATE + ROUTING
+   ============================================================ */
+const state = { tiers: DEFAULT_TIERS, me: null, project: null, adminFilter: "new", adminTab: "referrals", partnerFilter: null, justApproved: null };
+const VIEWS = { refer:"Refer", mine:"My referrals", how:"How it works" };
+function route(){ const h = location.hash.replace("#",""); return h === "owner" ? "owner" : (VIEWS[h] ? h : "refer"); }
+function go(v){ if (location.hash.replace("#","") === v) render(); else location.hash = v; }
+window.addEventListener("hashchange", render);
+
+function renderTabs(cur){
+  const tabs = $("#tabs");
+  if (cur === "owner") tabs.innerHTML = `<button role="tab" aria-selected="true">Owner dashboard</button><button role="tab" aria-selected="false" data-go="refer">Partner view</button>`;
+  else tabs.innerHTML = Object.entries(VIEWS).map(([k,v]) => `<button role="tab" aria-selected="${k===cur}" data-go="${k}">${v}</button>`).join("");
+  tabs.querySelectorAll("[data-go]").forEach(b => b.onclick = () => go(b.dataset.go));
+  if (state.unseen && cur !== "owner") setUnseen(state.unseen);
+}
+const seenKey = () => "jnm_seen_" + (state.me?.id || "");
+const isUnseen = (r, seen) => r.status !== "new" && seen[r.id] !== lastUpdate(r);
+function setUnseen(n){
+  state.unseen = n; const b = document.querySelector('#tabs [data-go="mine"]');
+  if (b) b.innerHTML = "My referrals" + (n ? ` <span class="count">${n}</span>` : "");
+}
+async function refreshUnseen(){
+  try { const rows = await api.myReferrals(); const seen = store.get(seenKey(), {}); setUnseen(rows.filter(r => isUnseen(r, seen)).length); } catch(e){}
+}
+function setEarn(label, amt, bump){
+  $("#earnLabel").textContent = label; const s = $("#earnAmt"); s.textContent = amt;
+  if (bump){ s.classList.add("bump"); setTimeout(() => s.classList.remove("bump"), 400); }
+}
+const maxTier = () => Math.max(...state.tiers.map(t => +t.amount));
+const minTier = () => Math.min(...state.tiers.map(t => +t.amount));
+
+async function render(){
+  const v = route(); renderTabs(v); window.scrollTo(0,0); clearApp();
+  if (v === "how") return viewHow();
+  if (v === "owner") return viewOwner();
+  const email = await api.email("partner");
+  if (!email) return viewSignIn("partner");
+  try { state.me = await api.myPartner(); } catch(e){ return loadError(e); }
+  if (!state.me) return viewApply(email);
+  if (state.me.status === "declined" || state.me.status === "deactivated") return viewLocked();
+  if (v === "mine") return viewMine();
+  refreshUnseen();
+  return viewRefer();
+}
+function loadError(e){ console.error(e); clearApp().innerHTML = `<div class="need err" style="margin-top:18px">Couldn't load your account: ${esc(e.message)}. Check your connection and try again.</div><button class="btn ghost" onclick="render()">Try again</button>`; }
+const demoBanner = msg => !LIVE ? `<div class="demo">${msg}</div>` : "";
+const footer = () => `<div class="foot"><button class="linkbtn" onclick="go('owner')">Owner login</button></div>`;
+
+/* ============================================================
+   SIGN IN (email code) — partners and owner
+   ============================================================ */
+function viewSignIn(role, presetEmail){
+  const owner = role === "owner";
+  setEarn(owner ? "Owner" : "Earn up to", owner ? "—" : money(maxTier()));
+  const app = clearApp();
+  app.innerHTML = `
+    ${demoBanner(`Demo mode: use any email, and the code is ${DEMO_CODE}.`)}
+    ${owner ? "" : `<section class="sec"><div class="sec-b intro">
+        <h1>Know someone who needs work done? Get paid for it.</h1>
+        <p class="muted">Send us a homeowner who needs a kitchen, bath, impact windows, a driveway, or more. When the job is installed, you earn ${money(minTier())} to ${money(maxTier())}, and you can follow every step along the way.</p>
+      </div></section>`}
+    <section class="sec">
+      <div class="sec-h"><span><span class="n">1</span>${owner ? "Owner sign in" : "Sign in or apply"}</span><span class="aside">No password needed</span></div>
+      <div class="sec-b">
+        <div class="field"><label class="l" for="sEmail">Email</label><input class="in" id="sEmail" type="email" inputmode="email" autocomplete="email" value="${esc(presetEmail || "")}"></div>
+        <div class="need hidden" id="sMsg"></div>
+        <button class="btn" id="sSend">Email me a code</button>
+        ${owner ? "" : `<p class="small muted" style="margin:12px 0 0">New partners: sign in with your email first, then fill out a short application.</p>`}
+      </div>
+    </section>
+    <section class="sec hidden" id="codeSec">
+      <div class="sec-h"><span><span class="n">2</span>Enter your code</span></div>
+      <div class="sec-b">
+        <p class="small muted" style="margin:0 0 12px" id="sentTo"></p>
+        <div class="field"><label class="l" for="sCode">6-digit code</label><input class="in code" id="sCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6"></div>
+        <div class="need hidden" id="cMsg"></div>
+        <button class="btn" id="sVerify">${owner ? "Sign in" : "Continue"}</button>
+        <div style="display:flex;justify-content:space-between;margin-top:14px"><button class="linkbtn" id="sResend">Send a new code</button><button class="linkbtn" id="sChange">Use a different email</button></div>
+      </div>
+    </section>
+    ${owner ? "" : footer()}`;
+  const msg = (el, text, kind) => { el.className = "need " + (kind || ""); el.textContent = text; };
+  let email = "";
+  const send = async () => {
+    email = $("#sEmail").value.trim().toLowerCase();
+    if (!validEmail(email)) return msg($("#sMsg"), "Enter a valid email address.", "err");
+    const b = $("#sSend"); b.disabled = true; b.textContent = "Sending…";
+    try {
+      await api.sendCode(email);
+      $("#sMsg").className = "need hidden"; $("#codeSec").classList.remove("hidden");
+      $("#sentTo").textContent = LIVE ? `We sent a code to ${email}. Check spam if you don't see it in a minute.` : `Demo mode: no email is sent. Use code ${DEMO_CODE}.`;
+      $("#sCode").focus();
+    } catch(e){ msg($("#sMsg"), "Couldn't send the code: " + e.message, "err"); }
+    b.disabled = false; b.textContent = "Email me a code";
+  };
+  const verify = async () => {
+    const code = digits($("#sCode").value);
+    if (code.length !== 6) return msg($("#cMsg"), "Enter the 6-digit code from the email.", "err");
+    const b = $("#sVerify"); b.disabled = true; b.textContent = "Checking…";
+    try { await api.verifyCode(email, code, role); owner ? viewOwner() : render(); }
+    catch(e){ msg($("#cMsg"), e.message, "err"); b.disabled = false; b.textContent = owner ? "Sign in" : "Continue"; }
+  };
+  $("#sSend").onclick = send; $("#sEmail").onkeydown = e => { if (e.key === "Enter") send(); };
+  $("#sVerify").onclick = verify; $("#sCode").oninput = e => { if (digits(e.target.value).length === 6) verify(); };
+  $("#sResend").onclick = send;
+  $("#sChange").onclick = () => { $("#codeSec").classList.add("hidden"); $("#sEmail").focus(); };
+}
+
+/* ============================================================
+   APPLY (first time)
+   ============================================================ */
+function viewApply(email){
+  setEarn("Earn up to", money(maxTier()));
+  const app = clearApp();
+  let type = null;
+  app.innerHTML = `
+    ${demoBanner("Demo mode: this application is saved on this device. Approve it from Owner login.")}
+    <section class="sec">
+      <div class="sec-h"><span><span class="n">1</span>About you</span><span class="aside">Partner application</span></div>
+      <div class="sec-b">
+        <div class="field"><label class="l" for="aName">Full name</label><input class="in" id="aName" autocomplete="name"></div>
+        <div class="field"><label class="l" for="aPhone">Phone</label><input class="in" id="aPhone" type="tel" inputmode="tel" autocomplete="tel"></div>
+        <div class="field" style="margin-bottom:0"><label class="l">Email</label><div class="sending-as"><span>${esc(email)}</span><button class="linkbtn" id="aOut">Not you?</button></div></div>
+      </div>
+    </section>
+    <section class="sec">
+      <div class="sec-h"><span><span class="n">2</span>I am a</span></div>
+      <div class="sec-b">
+        <div class="opts" id="aType">${PARTNER_TYPES.map(t => `<button type="button" class="opt" data-t="${t.key}" aria-pressed="false"><b>${t.key}</b><span>${t.hint}</span></button>`).join("")}</div>
+        <div class="field hidden" id="fBrok" style="margin:14px 0 0"><label class="l" for="aBrok">Brokerage</label><input class="in" id="aBrok" placeholder="Realtor payouts go through your broker"></div>
+        <div class="field hidden" id="fComp" style="margin:14px 0 0"><label class="l" for="aComp">Company or trade</label><input class="in" id="aComp" placeholder="e.g. ABC Plumbing"></div>
+      </div>
+    </section>
+    <section class="sec">
+      <div class="sec-h"><span><span class="n">3</span>Payout terms</span></div>
+      <div class="sec-b">
+        <p class="small" style="margin:0 0 6px">${esc(CONFIG.PAYOUT_TERMS)}</p>
+        <label class="tog"><input type="checkbox" id="aTerms"><span class="sw"></span><span class="t">I agree to the payout terms</span></label>
+      </div>
+    </section>
+    <div class="need" id="need" style="margin-top:18px"></div>
+    <button class="btn" id="aGo" disabled>Submit application</button>
+    ${footer()}`;
+  liveFormat($("#aPhone"));
+  $("#aOut").onclick = async () => { await api.signOut("partner"); render(); };
+  $("#aType").onclick = e => { const b = e.target.closest(".opt"); if (!b) return; type = b.dataset.t;
+    app.querySelectorAll("#aType .opt").forEach(x => x.setAttribute("aria-pressed", x === b));
+    $("#fBrok").classList.toggle("hidden", type !== "Realtor"); $("#fComp").classList.toggle("hidden", type !== "Contractor"); check(); };
+  const missing = () => { const m = [];
+    if ($("#aName").value.trim().length < 2) m.push("Full name");
+    if (digits($("#aPhone").value).length !== 10) m.push("Phone");
+    if (!type) m.push("I am a");
+    if (type === "Realtor" && $("#aBrok").value.trim().length < 2) m.push("Brokerage");
+    if (!$("#aTerms").checked) m.push("Agree to terms");
+    return m; };
+  function check(){ const m = missing(); const n = $("#need"); n.className = "need" + (m.length ? "" : " ok"); n.textContent = m.length ? "Still needed: " + m.join(", ") + "." : "Ready to submit."; $("#aGo").disabled = m.length > 0; }
+  app.oninput = check; app.onchange = check; check();
+  $("#aGo").onclick = async () => {
+    const b = $("#aGo"); b.disabled = true; b.textContent = "Submitting…";
+    const p = { name:$("#aName").value.trim(), phone:$("#aPhone").value, type, brokerage:type==="Realtor" ? $("#aBrok").value.trim() : "", company:type==="Contractor" ? $("#aComp").value.trim() : "" };
+    try {
+      await api.apply(p);
+      notifyOwner({ _subject:`New partner application: ${p.name} (${p.type})`, name:p.name, phone:fmtPhone(p.phone), email, type:p.type, brokerage:p.brokerage, company:p.company, review_at:appLink() + "#owner" });
+      toast("Application submitted"); render();
+    } catch(e){ const n = $("#need"); n.className = "need err"; n.textContent = "Couldn't submit: " + e.message; b.disabled = false; b.textContent = "Submit application"; }
+  };
+}
+
+function viewLocked(){
+  setEarn("Account", PSTATUS[state.me.status]);
+  clearApp().innerHTML = `
+    <section class="sec"><div class="sec-b">
+      <p style="margin:0 0 8px"><b class="sans">${state.me.status === "declined" ? "Your application wasn't approved." : "Your partner account is inactive."}</b></p>
+      <p class="small muted" style="margin:0">If you think this is a mistake, reach out to JNM${CONFIG.COMPANY_PHONE ? ` at <a href="tel:${digits(CONFIG.COMPANY_PHONE)}">${esc(CONFIG.COMPANY_PHONE)}</a>` : ""}.</p>
+    </div></section>
+    <button class="btn ghost" id="lo">Sign out</button>${footer()}`;
+  $("#lo").onclick = async () => { await api.signOut("partner"); render(); };
+}
+
+/* ============================================================
+   PARTNER: SEND REFERRAL
+   ============================================================ */
+function pendingBanner(){
+  return state.me.status === "pending" ? `<div class="need warn" style="margin-top:18px"><b>Your account is under review.</b> You can send referrals now. They'll be credited to you once you're approved, and we'll let you know.</div>` : "";
+}
+function viewRefer(){
+  const me = state.me;
+  const t = state.tiers.find(x => x.key === state.project);
+  setEarn(t ? "You earn" : "Earn up to", money(t ? t.amount : maxTier()));
+  const app = clearApp();
+  app.innerHTML = `
+    ${demoBanner("Demo mode: referrals are saved on this device only.")}
+    ${pendingBanner()}
+    <section class="sec">
+      <div class="sec-h"><span><span class="n">1</span>Project type</span><span class="aside">Payout when it closes</span></div>
+      <div class="sec-b"><div class="opts" id="projOpts">
+        ${state.tiers.map(x => `<button type="button" class="opt" data-k="${x.key}" aria-pressed="${x.key===state.project}"><b>${esc(x.label)}</b><span>${money(x.amount)}</span></button>`).join("")}
+      </div></div>
+    </section>
+    <section class="sec">
+      <div class="sec-h"><span><span class="n">2</span>Client info</span></div>
+      <div class="sec-b">
+        <div class="field"><label class="l" for="cName">Client name</label><input class="in" id="cName" autocomplete="off" placeholder="First and last name"></div>
+        <div class="field"><label class="l" for="cPhone">Client phone</label><input class="in" id="cPhone" type="tel" inputmode="tel" autocomplete="off" placeholder="(305) 555-0123"></div>
+        <div class="field"><label class="l" for="cAddr">Project address</label><input class="in" id="cAddr" autocomplete="off" placeholder="Street, city, ZIP"></div>
+        <div class="field"><label class="l" for="cNotes">Notes (optional)</label><textarea class="in" id="cNotes" placeholder="Best time to call, what they mentioned, etc."></textarea></div>
+        <label class="tog"><input type="checkbox" id="cConsent"><span class="sw"></span><span class="t">They're expecting our call<small>The client agreed to be contacted by JNM.</small></span></label>
+      </div>
+    </section>
+    <div class="need" id="need" style="margin-top:18px"></div>
+    <button class="btn" id="send" disabled>Send referral</button>
+    <div class="sending-as small" style="margin-top:16px"><span class="muted">Signed in as ${esc(me.name)} · ${esc(me.partner_type)}</span><button class="linkbtn" id="lo">Sign out</button></div>
+    ${footer()}`;
+  liveFormat($("#cPhone"));
+  $("#lo").onclick = async () => { await api.signOut("partner"); state.project = null; render(); };
+  $("#projOpts").onclick = e => { const b = e.target.closest(".opt"); if (!b) return; state.project = b.dataset.k;
+    app.querySelectorAll("#projOpts .opt").forEach(x => x.setAttribute("aria-pressed", x === b));
+    setEarn("You earn", money(state.tiers.find(x => x.key === state.project).amount), true); check(); };
+  const missing = () => { const m = [];
+    if (!state.project) m.push("Project type");
+    if ($("#cName").value.trim().length < 2) m.push("Client name");
+    if (digits($("#cPhone").value).length !== 10) m.push("Client phone");
+    if ($("#cAddr").value.trim().length < 6) m.push("Address");
+    if (!$("#cConsent").checked) m.push("Client OK to contact");
+    return m; };
+  function check(){ const m = missing(); const n = $("#need"); n.className = "need" + (m.length ? "" : " ok"); n.textContent = m.length ? "Still needed: " + m.join(", ") + "." : "Ready to send."; $("#send").disabled = m.length > 0; }
+  app.oninput = check; app.onchange = check; check();
+  $("#send").onclick = async () => {
+    const btn = $("#send"); btn.disabled = true; btn.textContent = "Sending…";
+    const r = { project:state.project, name:$("#cName").value.trim(), phone:$("#cPhone").value, address:$("#cAddr").value.trim(), notes:$("#cNotes").value.trim() };
+    try {
+      const amount = await api.submitReferral(r);
+      const tier = state.tiers.find(t => t.key === r.project);
+      notifyOwner({ _subject:`New referral: ${tier.label} — ${r.name}${me.status==="pending" ? " (partner pending approval)" : ""}`, project:tier.label, payout:money(amount), client_name:r.name, client_phone:fmtPhone(r.phone), client_address:r.address, notes:r.notes, referred_by:me.name, referrer_phone:fmtPhone(me.phone), referrer_type:me.partner_type, partner_status:me.status, dashboard:appLink() + "#owner" });
+      viewDone(tier, amount);
+    } catch (e) {
+      console.error(e); btn.disabled = false; btn.textContent = "Send referral";
+      const n = $("#need"); n.className = "need err"; n.textContent = "Couldn't send: " + (e.message || "check your connection") + ". Your info is still here, try again.";
+    }
+  };
+}
+
+function viewDone(tier, amount){
+  state.project = null; setEarn("You earn", money(amount));
+  const app = clearApp();
+  app.innerHTML = `
+    <section class="sec"><div class="done">
+      <div class="check"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg></div>
+      <h2>Referral sent</h2>
+      <div class="big">${money(amount)}</div>
+      <p class="muted" style="margin:0 auto;max-width:34ch">is yours when this ${esc(tier.label.toLowerCase())} is installed. Track every step in My referrals.</p>
+      ${state.me.status === "pending" ? `<p class="small" style="margin:14px auto 0;max-width:36ch;color:var(--warn)">This referral is held until your partner account is approved.</p>` : ""}
+    </div></section>
+    <button class="btn" id="again">Send another referral</button>
+    <button class="btn ghost" id="mine">Track my referrals</button>
+    <p class="small muted" style="text-align:center;margin-top:18px">Tip: add this page to your home screen so it's one tap next time.</p>`;
+  $("#again").onclick = () => viewRefer();
+  $("#mine").onclick = () => go("mine");
+}
+
+/* ============================================================
+   PARTNER: MY REFERRALS
+   ============================================================ */
+const statusLabel = k => ({ new:"Received", contacted:"Contacted", appointment:"Appt set", signed:"Contract signed", installed:"Installed", paid:"Paid", dead:"Not moving forward" })[k] || k;
+const NEXT = { new:"Next: we reach out to your client", contacted:"Next: setting the appointment", appointment:"Next: contract", signed:"Next: installation, then your payout", installed:"Your payout is on the way", paid:"Paid. Thank you!", dead:"Your client isn't moving forward right now" };
+function tracker(r){
+  const cur = ORDER.indexOf(r.status);
+  return `<div class="track">${STAGES.map(s => { const idx = ORDER.indexOf(s.key); const at = r[s.key + "_at"];
+    const done = r.status === "dead" ? !!at : idx <= cur;
+    return `<div class="${done ? "on" : ""}${idx === cur ? " cur" : ""}">${s.label}${at && done ? `<time>${shortDate(at)}</time>` : ""}</div>`; }).join("")}</div>`;
+}
+async function viewMine(){
+  const app = clearApp();
+  app.innerHTML = `<section class="sec"><div class="empty">Loading your referrals…</div></section>`;
+  let rows = [];
+  try { rows = await api.myReferrals(); } catch(e){ return loadError(e); }
+  const seen = store.get(seenKey(), {});
+  const earned = rows.filter(r => r.status === "paid").reduce((s,r) => s + +r.payout, 0);
+  const coming = rows.filter(r => r.status === "installed").reduce((s,r) => s + +r.payout, 0);
+  const inPlay = rows.filter(r => ["signed"].includes(r.status)).reduce((s,r) => s + +r.payout, 0);
+  setEarn("Paid to you", money(earned));
+  app.innerHTML = `
+    ${pendingBanner()}
+    <div class="stats">
+      <div class="stat"><small>Signed, in progress</small><b>${money(inPlay)}</b></div>
+      <div class="stat"><small>Installed, payout coming</small><b>${money(coming)}</b></div>
+      <div class="stat"><small>Paid</small><b class="c">${money(earned)}</b></div>
+    </div>
+    <section class="sec">
+      <div class="sec-h"><span>Your referrals</span><span class="aside">${rows.length} sent</span></div>
+      ${rows.length ? rows.map(r => `
+        <div class="item${r.status === "dead" ? " dim" : ""}">
+          <div class="item-top"><div><b>${esc(r.client_name)}</b>${isUnseen(r, seen) ? ` <span class="upd">Updated</span>` : ""}<div class="small muted">${esc(r.project_label)} · Sent ${fmtDate(r.created_at)}</div></div>
+          <div style="text-align:right"><b class="sans">${money(r.payout)}</b><div class="small muted">${r.status === "paid" ? "paid" : "at install"}</div></div></div>
+          ${tracker(r)}
+          <div class="small next ${r.status}">${NEXT[r.status] || ""}</div>
+        </div>`).join("")
+      : `<div class="empty">No referrals yet. Your first one takes about 30 seconds.</div>`}
+    </section>
+    <button class="btn" onclick="go('refer')">Send a referral</button>`;
+  const now = Object.fromEntries(rows.map(r => [r.id, lastUpdate(r)])); store.set(seenKey(), now); setUnseen(0);
+}
+
+/* ============================================================
+   PARTNER: HOW IT WORKS (public)
+   ============================================================ */
+function viewHow(){
+  setEarn("Earn up to", money(maxTier()));
+  clearApp().innerHTML = `
+    <section class="sec">
+      <div class="sec-h"><span>How it works</span></div>
+      <div class="sec-b"><ol class="steps">
+        <li><div><b>Apply once</b><span class="muted small">Sign in with your email and tell us who you are. We review every partner.</span></div></li>
+        <li><div><b>Send referrals</b><span class="muted small">Client's name, phone, address, and what they need. Make sure they know we'll call.</span></div></li>
+        <li><div><b>Track every step</b><span class="muted small">See when we contact your client, set the appointment, sign the contract, and install the job.</span></div></li>
+        <li><div><b>You get paid</b><span class="muted small">Once the job is installed, you earn the payout for that project type.</span></div></li>
+      </ol></div>
+    </section>
+    <section class="sec">
+      <div class="sec-h"><span>Payouts</span><span class="aside">Per installed job</span></div>
+      <div class="sec-b">${state.tiers.map(t => `<div class="tier"><span>${esc(t.label)}</span><b>${money(t.amount)}</b></div>`).join("")}</div>
+    </section>
+    <section class="sec">
+      <div class="sec-h"><span>Who can join</span></div>
+      <div class="sec-b">${PARTNER_TYPES.map(t => `<div class="tier"><span>${t.key}</span><span class="muted">${t.hint}</span></div>`).join("")}</div>
+    </section>
+    <div class="need" style="margin-top:18px">${esc(CONFIG.PAYOUT_TERMS)}</div>
+    ${CONFIG.COMPANY_PHONE ? `<p class="small muted" style="text-align:center;margin-top:18px">Questions? Call <a href="tel:${digits(CONFIG.COMPANY_PHONE)}">${esc(CONFIG.COMPANY_PHONE)}</a></p>` : ""}
+    <button class="btn" onclick="go('refer')">Get started</button>`;
+}
+
+/* ============================================================
+   OWNER DASHBOARD
+   ============================================================ */
+async function viewOwner(){
+  const app = clearApp();
+  const email = await api.email("owner");
+  if (!email) return viewSignIn("owner");
+  let ok = false; try { ok = await api.isOwner(); } catch(e){}
+  if (!ok){
+    setEarn("Owner", "—");
+    app.innerHTML = `<div class="need err" style="margin-top:18px">${esc(email)} doesn't have owner access. Sign out and sign in with your owner email.</div><button class="btn ghost" id="lo">Sign out</button>`;
+    $("#lo").onclick = async () => { await api.signOut("owner"); viewOwner(); }; return;
+  }
+  app.innerHTML = `<section class="sec"><div class="empty">Loading…</div></section>`;
+  let refs = [], ps = [];
+  try { [refs, ps] = await Promise.all([api.allReferrals(), api.partners()]); }
+  catch(e){ app.innerHTML = `<div class="need err" style="margin-top:18px">Couldn't load the dashboard: ${esc(e.message)}.</div><button class="btn ghost" onclick="viewOwner()">Try again</button>`; return; }
+
+  const newCount = refs.filter(r => r.status === "new").length;
+  const pendingPartners = ps.filter(p => p.status === "pending").length;
+  const owed = refs.filter(r => r.status === "installed").reduce((s,r) => s + +r.payout, 0);
+  const closed = refs.filter(r => ["signed","installed","paid"].includes(r.status)).length;
+  setEarn("Owed to partners", money(owed));
+  const alerts = newCount + pendingPartners;
+  document.title = alerts ? `(${alerts}) JNM Referrals` : "JNM Referrals";
+
+  const at = state.adminTab;
+  app.innerHTML = `
+    ${demoBanner("Demo mode: showing data saved on this device.")}
+    <div class="stats four">
+      <div class="stat"><small>New referrals</small><b class="c">${newCount}</b></div>
+      <div class="stat"><small>Applications</small><b class="${pendingPartners ? "w" : ""}">${pendingPartners}</b></div>
+      <div class="stat"><small>Signed</small><b>${closed}</b></div>
+      <div class="stat"><small>Partners</small><b>${ps.filter(p => p.status === "approved").length}</b></div>
+    </div>
+    <div class="opts three" style="margin-top:18px" id="aTabs">
+      ${[["referrals","Referrals",newCount],["partners","Partners",pendingPartners],["payouts","Payouts",0]].map(([k,v,c]) => `<button class="opt slim" data-a="${k}" aria-pressed="${at===k}"><b>${v}${c ? ` <span class="count">${c}</span>` : ""}</b></button>`).join("")}
+    </div>
+    <div id="aBody"></div>
+    <div class="foot" style="display:flex;justify-content:center;gap:18px;flex-wrap:wrap">
+      <button class="linkbtn" id="csv">Export CSV</button><button class="linkbtn" id="refresh">Refresh</button><button class="linkbtn" id="lo">Sign out</button>
+    </div>`;
+  $("#aTabs").onclick = e => { const b = e.target.closest("[data-a]"); if (!b) return; state.adminTab = b.dataset.a; state.justUpdated = null; viewOwner(); };
+  $("#lo").onclick = async () => { await api.signOut("owner"); viewOwner(); };
+  $("#refresh").onclick = () => viewOwner();
+  $("#csv").onclick = () => exportCSV(refs);
+  if (at === "referrals") ownerReferrals(refs);
+  if (at === "partners") ownerPartners(ps);
+  if (at === "payouts") ownerPayouts();
+}
+
+function partnerBadge(s){ return s && s !== "approved" ? ` <span class="badge ps-${s}">Partner ${PSTATUS[s].toLowerCase()}</span>` : ""; }
+
+function ownerReferrals(refs){
+  const f = state.adminFilter;
+  const counts = Object.fromEntries(STATUSES.map(s => [s.key, refs.filter(r => r.status === s.key).length]));
+  const list = f === "all" ? refs : refs.filter(r => r.status === f);
+  const tierLabel = k => (state.tiers.find(t => t.key === k) || {}).label || k;
+  $("#aBody").innerHTML = `
+    <section class="sec">
+      <div class="filters" id="flt">
+        ${[["all","All",refs.length], ...STATUSES.map(s => [s.key, s.label, counts[s.key]])].map(([k,v,c]) => `<button class="chip" data-f="${k}" aria-pressed="${f===k}">${v} ${c}</button>`).join("")}
+      </div>
+      <div style="margin-top:12px">
+      ${list.length ? list.map(r => { const p = r.partners || {}; return `
+        <div class="item" data-id="${r.id}">
+          <div class="item-top">
+            <div><b>${r.status==="new" ? '<span class="new-dot"></span>' : ""}${esc(r.client_name)}</b><div class="small muted">${esc(tierLabel(r.project_type))} · ${fmtDate(r.created_at)}</div></div>
+            <span class="badge st-${r.status}">${esc((STATUSES.find(s=>s.key===r.status)||{}).label)}</span>
+          </div>
+          <dl class="kv">
+            <dt>Phone</dt><dd><a href="tel:${digits(r.client_phone)}">${esc(fmtPhone(r.client_phone))}</a></dd>
+            <dt>Address</dt><dd><a href="https://maps.google.com/?q=${encodeURIComponent(r.client_address)}" target="_blank" rel="noopener">${esc(r.client_address)}</a></dd>
+            ${r.notes ? `<dt>Notes</dt><dd>${esc(r.notes)}</dd>` : ""}
+            <dt>From</dt><dd>${esc(p.name)} · ${esc(p.partner_type)}${p.brokerage ? " · " + esc(p.brokerage) : ""}${p.company ? " · " + esc(p.company) : ""}${partnerBadge(p.status)}<br><a href="tel:${digits(p.phone)}">${esc(fmtPhone(p.phone))}</a>${p.email ? ` · <a href="mailto:${esc(p.email)}">${esc(p.email)}</a>` : ""}</dd>
+          </dl>
+          ${STAMPS.some(k => r[k]) ? `<div class="small muted" style="margin-top:8px">${STAMPS.filter(k => r[k]).map(k => `${(STATUSES.find(s => s.key === k.replace("_at","")) || {}).label} ${shortDate(r[k])}`).join(" · ")}</div>` : ""}
+          <div class="status-row">${STATUSES.map(s => `<button data-s="${s.key}" aria-pressed="${r.status===s.key}">${s.label}</button>`).join("")}</div>
+          <div class="pay-row"><span class="l" style="margin:0">Payout $</span><input class="in" type="number" inputmode="numeric" min="0" step="25" value="${+r.payout}" data-pay>${r.paid_at ? `<span class="small muted">Paid ${fmtDate(r.paid_at)}</span>` : ""}</div>
+          ${state.justUpdated === r.id ? updateRow(r) : ""}
+        </div>`; }).join("") : `<div class="empty">${f==="new" ? "No new referrals right now. New ones land here first." : "Nothing in this stage."}</div>`}
+      </div>
+    </section>`;
+  $("#flt").onclick = e => { const b = e.target.closest("[data-f]"); if (!b) return; state.adminFilter = b.dataset.f; state.justUpdated = null; ownerReferrals(refs); };
+  $("#aBody").querySelectorAll(".item[data-id]").forEach(el => {
+    const r = refs.find(x => x.id === el.dataset.id);
+    el.querySelector(".status-row").onclick = async e => {
+      const b = e.target.closest("[data-s]"); if (!b || b.dataset.s === r.status) return;
+      if (b.dataset.s === "paid" && r.partners?.status !== "approved" && !confirm("This partner isn't approved. Mark the referral paid anyway?")) return;
+      const patch = statusPatch(r, b.dataset.s);
+      try { await api.updateReferral(r.id, patch); toast(`Marked ${b.textContent.toLowerCase()}`); state.justUpdated = r.id; state.adminFilter = b.dataset.s; viewOwner(); } catch(err){ toast("Couldn't update: " + err.message); }
+    };
+    el.querySelector("[data-pay]").onchange = async e => {
+      const v = Math.max(0, +e.target.value || 0);
+      try { await api.updateReferral(r.id, { payout:v }); r.payout = v; toast("Payout saved"); } catch(err){ toast("Couldn't save: " + err.message); }
+    };
+  });
+}
+
+function updateRow(r){
+  const p = r.partners || {}; const first = (p.name || "").split(" ")[0]; const client = (r.client_name || "").split(" ")[0];
+  const line = {
+    new: `we received your referral for ${client}.`,
+    contacted: `we've reached out to ${client}.`,
+    appointment: `we have an appointment set with ${client}.`,
+    signed: `${client} signed a contract! Your ${money(r.payout)} payout is sent once the job is installed.`,
+    installed: `${client}'s job is installed. Your ${money(r.payout)} payout is on the way.`,
+    paid: `your ${money(r.payout)} payout for ${client} has been sent. Thank you!`,
+    dead: `${client} decided not to move forward right now. Thanks for the referral, and keep them coming.`
+  }[r.status];
+  const msg = `Hi ${first}, update on your JNM referral: ${line} Track it anytime at ${appLink()}`;
+  return `<div class="need ok" style="margin-top:12px">Let ${esc(first)} know:
+    <div class="small muted" style="margin-top:6px">${esc(msg)}</div>
+    <div style="display:flex;gap:16px;margin-top:8px"><a href="sms:${digits(p.phone)}?&body=${encodeURIComponent(msg)}">Text them</a>${p.email ? `<a href="mailto:${esc(p.email)}?subject=${encodeURIComponent("Update on your JNM referral")}&body=${encodeURIComponent(msg)}">Email them</a>` : ""}<button class="linkbtn" onclick="state.justUpdated=null;this.closest('.need').remove()">Skip</button></div></div>`;
+}
+
+function ownerPartners(ps){
+  const counts = Object.fromEntries(Object.keys(PSTATUS).map(k => [k, ps.filter(p => p.status === k).length]));
+  if (!state.partnerFilter) state.partnerFilter = counts.pending ? "pending" : "approved";
+  const f = state.partnerFilter;
+  const list = f === "all" ? ps : ps.filter(p => p.status === f);
+  $("#aBody").innerHTML = `
+    <section class="sec">
+      <div class="sec-h"><span>Partners</span><button class="linkbtn" id="inv" style="font-size:12px">Copy invite link</button></div>
+      <div class="filters" id="pflt">
+        ${[["pending","Applications"],["approved","Approved"],["declined","Declined"],["deactivated","Inactive"],["all","All"]].map(([k,v]) => `<button class="chip" data-f="${k}" aria-pressed="${f===k}">${v} ${k==="all" ? ps.length : counts[k]}</button>`).join("")}
+      </div>
+      <div style="margin-top:12px">
+      ${list.length ? list.map(p => { const rs = p.referrals || []; const owed = rs.filter(r=>r.status==="installed").reduce((s,r)=>s + +r.payout,0); const pd = rs.filter(r=>r.status==="paid").reduce((s,r)=>s + +r.payout,0); return `
+        <div class="item" data-pid="${p.id}">
+          <div class="item-top"><div><b>${esc(p.name)}</b><div class="small muted">${esc(p.partner_type)}${p.brokerage ? " · " + esc(p.brokerage) : ""}${p.company ? " · " + esc(p.company) : ""}</div></div>
+            <span class="badge ps-${p.status}">${PSTATUS[p.status]}</span></div>
+          <dl class="kv">
+            <dt>Phone</dt><dd><a href="tel:${digits(p.phone)}">${esc(fmtPhone(p.phone))}</a></dd>
+            <dt>Email</dt><dd><a href="mailto:${esc(p.email)}">${esc(p.email)}</a></dd>
+            <dt>Applied</dt><dd>${fmtDate(p.created_at)}</dd>
+            <dt>Referrals</dt><dd>${rs.length} sent${owed ? ` · <span style="color:var(--warn)">${money(owed)} owed</span>` : ""}${pd ? ` · ${money(pd)} paid` : ""}</dd>
+          </dl>
+          <div class="act-row">
+            ${p.status === "pending" ? `<button class="btn sm" data-act="approved">Approve</button><button class="btn sm ghost" data-act="declined">Decline</button>` : ""}
+            ${p.status === "approved" ? `<button class="btn sm ghost" data-act="deactivated">Deactivate</button>` : ""}
+            ${p.status === "declined" || p.status === "deactivated" ? `<button class="btn sm ghost" data-act="approved">Approve</button>` : ""}
+          </div>
+          ${state.justApproved === p.id ? notifyRow(p) : ""}
+        </div>`; }).join("")
+      : `<div class="empty">${f==="pending" ? "No applications waiting. Share your invite link to bring in partners." : "No partners here."}</div>`}
+      </div>
+    </section>`;
+  $("#pflt").onclick = e => { const b = e.target.closest("[data-f]"); if (!b) return; state.partnerFilter = b.dataset.f; state.justApproved = null; ownerPartners(ps); };
+  $("#inv").onclick = async () => { try { await navigator.clipboard.writeText(appLink()); toast("Invite link copied"); } catch { prompt("Copy this link:", appLink()); } };
+  $("#aBody").querySelectorAll("[data-act]").forEach(b => b.onclick = async () => {
+    const id = b.closest("[data-pid]").dataset.pid; const to = b.dataset.act; const p = ps.find(x => x.id === id);
+    if (to !== "approved" && !confirm(`${to === "declined" ? "Decline" : "Deactivate"} ${p.name}? They won't be able to send referrals.`)) return;
+    try {
+      await api.updatePartner(id, { status:to, decided_at:new Date().toISOString() });
+      p.status = to; state.justApproved = to === "approved" ? id : null;
+      toast(`${p.name} ${PSTATUS[to].toLowerCase()}`);
+      if (to === "approved"){ state.partnerFilter = "approved"; }
+      viewOwner();
+    } catch(e){ toast("Couldn't update: " + e.message); }
+  });
+}
+function notifyRow(p){
+  const first = (p.name || "").split(" ")[0];
+  const msg = `Hi ${first}, you're approved as a JNM Referral Partner! Send referrals anytime at ${appLink()} and track your payouts there too. Thank you, JNM Renovation & Construction`;
+  return `<div class="need ok" style="margin-top:12px">Let ${esc(first)} know they're approved:
+    <div style="display:flex;gap:16px;margin-top:8px"><a href="sms:${digits(p.phone)}?&body=${encodeURIComponent(msg)}">Text them</a><a href="mailto:${esc(p.email)}?subject=${encodeURIComponent("You're approved: JNM Referral Partner")}&body=${encodeURIComponent(msg)}">Email them</a></div></div>`;
+}
+
+function ownerPayouts(){
+  $("#aBody").innerHTML = `<section class="sec"><div class="sec-h"><span>Payout per project type</span><span class="aside">Partners see these</span></div>
+    <div class="sec-b">${state.tiers.map(t => `<div class="tier" style="align-items:center"><span>${esc(t.label)}</span><span style="display:flex;align-items:center;gap:6px">$<input class="in" style="width:100px;padding:8px 10px;font-size:15px" type="number" min="0" step="25" value="${+t.amount}" data-k="${t.key}"></span></div>`).join("")}
+    <p class="small muted" style="margin:14px 0 0">Changes apply to new referrals. Existing referrals keep the payout they were sent with, and you can adjust any one of them on its card.</p></div></section>`;
+  $("#aBody").querySelectorAll("[data-k]").forEach(inp => inp.onchange = async () => {
+    const v = Math.max(0, +inp.value || 0);
+    try { await api.saveTier(inp.dataset.k, v); state.tiers.find(t => t.key === inp.dataset.k).amount = v; toast("Payout updated"); } catch(e){ toast("Couldn't save: " + e.message); }
+  });
+}
+
+function exportCSV(refs){
+  const cols = ["created_at","status","contacted_at","appointment_at","signed_at","installed_at","client_name","client_phone","client_address","project","notes","payout","paid_at","partner_name","partner_status","partner_phone","partner_email","partner_type","brokerage","company"];
+  const rows = refs.map(r => { const p = r.partners || {}; return [r.created_at, r.status, r.contacted_at, r.appointment_at, r.signed_at, r.installed_at, r.client_name, fmtPhone(r.client_phone), r.client_address, (state.tiers.find(t=>t.key===r.project_type)||{}).label, r.notes, r.payout, r.paid_at, p.name, p.status, fmtPhone(p.phone), p.email, p.partner_type, p.brokerage, p.company]; });
+  const csv = [cols, ...rows].map(row => row.map(v => `"${String(v ?? "").replace(/"/g,'""')}"`).join(",")).join("\n");
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type:"text/csv" }));
+  a.download = `jnm-referrals-${new Date().toISOString().slice(0,10)}.csv`; document.body.appendChild(a); a.click(); a.remove();
+}
+
+/* ---------- boot ---------- */
+(async function(){
+  try { const t = await api.tiers(); if (t && t.length) state.tiers = t; } catch(e){ console.warn("Using default payouts", e); }
+  render();
+  if (LIVE) setInterval(() => { if (route() === "owner" && document.visibilityState === "visible" && !document.activeElement?.matches("input,textarea")) viewOwner(); }, 60000);
+})();
+
+</script>
+</body>
+</html>
