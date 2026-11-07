@@ -197,6 +197,11 @@ input.in.code{ font-size:24px; letter-spacing:.4em; text-align:center; font-weig
 .st-installed{ color:#00151a; background:var(--cyan); border-color:var(--cyan); }
 .status-row{ grid-template-columns:repeat(7,1fr) !important; }
 @media (max-width:520px){ .status-row{ grid-template-columns:repeat(4,1fr) !important; } }
+.bonus-row{ display:flex; justify-content:space-between; align-items:center; gap:10px; margin-top:12px; padding:10px 12px; background:var(--field); border:1px solid var(--line); border-radius:3px; font-size:13px; }
+.bonus-row b{ font-family:var(--sans); color:var(--cyan); }
+.ps-row{ display:grid; grid-template-columns:repeat(3,1fr); gap:4px; }
+.ps-row button{ background:var(--field); border:1px solid var(--line); border-radius:2px; font-size:11px; letter-spacing:.06em; text-transform:uppercase; padding:9px 2px; cursor:pointer; }
+.ps-row button[aria-pressed="true"]{ background:var(--cyan); color:#00151a; border-color:var(--cyan); font-weight:700; }
 </style>
 </head>
 <body>
@@ -262,6 +267,8 @@ function statusPatch(r, to){
 }
 const PSTATUS = { pending:"Pending", approved:"Approved", declined:"Declined", deactivated:"Deactivated" };
 const DEMO_CODE = "123456";
+const DEFAULT_BONUS = 50;
+const PAYOUT_SETUP = { not_invited:"Not invited", invited:"Invited", ready:"Ready to pay" };
 const shortDate = iso => iso ? new Date(iso).toLocaleDateString("en-US", { month:"short", day:"numeric" }) : "";
 
 /* ---------- helpers ---------- */
@@ -319,7 +326,8 @@ const api = {
 
   /* partner */
   async myPartner(){
-    if (!LIVE){ const e = store.get(demoSess("partner"), null); return demoDB.load().partners.find(p => p.email === e) || null; }
+    if (!LIVE){ const e = store.get(demoSess("partner"), null); const db = demoDB.load(); const p = db.partners.find(p => p.email === e); if (!p) return null;
+      const rec = db.partners.find(x => x.id === p.recruited_by); return { payout_status:"not_invited", ...p, recruited_by_name: rec ? rec.name.split(" ")[0] : null }; }
     const d = await rpc("my_partner"); return (d && d[0]) || null;
   },
   async apply(p){
@@ -327,17 +335,18 @@ const api = {
       const db = demoDB.load(); const email = store.get(demoSess("partner"), null);
       if (db.partners.some(x => x.phone === digits(p.phone) && x.email !== email)) throw new Error("That phone number is already on another partner account");
       const code = (p.name.replace(/[^A-Za-z]/g,"").slice(0,4) || "JNM").toUpperCase() + "-" + Math.random().toString(36).slice(2,6).toUpperCase();
-      db.partners.push({ id:crypto.randomUUID(), code, email, name:p.name, phone:digits(p.phone), partner_type:p.type, brokerage:p.brokerage, company:p.company, status:"pending", created_at:new Date().toISOString(), decided_at:null });
+      const rec = db.partners.find(x => x.code === (p.ref || "").toUpperCase() && x.status === "approved");
+      db.partners.push({ id:crypto.randomUUID(), code, email, name:p.name, phone:digits(p.phone), partner_type:p.type, brokerage:p.brokerage, company:p.company, status:"pending", payout_status:"not_invited", recruited_by: rec ? rec.id : null, created_at:new Date().toISOString(), decided_at:null });
       demoDB.save(db); return;
     }
-    await rpc("apply_partner", { p_name:p.name, p_phone:p.phone, p_type:p.type, p_brokerage:p.brokerage || "", p_company:p.company || "" });
+    await rpc("apply_partner", { p_name:p.name, p_phone:p.phone, p_type:p.type, p_brokerage:p.brokerage || "", p_company:p.company || "", p_ref:p.ref || "" });
   },
   async submitReferral(r){
     if (!LIVE){
       const db = demoDB.load(); const e = store.get(demoSess("partner"), null);
       const partner = db.partners.find(x => x.email === e); const tier = db.tiers.find(t => t.key === r.project);
       if (!partner || !["pending","approved"].includes(partner.status)) throw new Error("Your account can't send referrals right now");
-      db.referrals.unshift({ id:crypto.randomUUID(), partner_id:partner.id, client_name:r.name, client_phone:digits(r.phone), client_address:r.address, project_type:r.project, notes:r.notes, consent:true, status:"new", payout:tier.amount, created_at:new Date().toISOString(), paid_at:null });
+      db.referrals.unshift({ id:crypto.randomUUID(), partner_id:partner.id, client_name:r.name, client_phone:digits(r.phone), client_address:r.address, project_type:r.project, notes:r.notes, consent:true, status:"new", payout:tier.amount, recruiter_id: partner.recruited_by || null, recruiter_bonus: partner.recruited_by ? (db.settings?.recruiter_bonus ?? DEFAULT_BONUS) : 0, recruiter_paid_at:null, created_at:new Date().toISOString(), paid_at:null });
       demoDB.save(db); return tier.amount;
     }
     return rpc("submit_referral", { p_project:r.project, p_client_name:r.name, p_client_phone:r.phone, p_client_address:r.address, p_notes:r.notes || "", p_consent:true });
@@ -350,11 +359,35 @@ const api = {
     return rpc("my_referrals");
   },
 
+  async recruiterName(code){
+    if (!code) return null;
+    if (!LIVE){ const p = demoDB.load().partners.find(x => x.code === code.toUpperCase() && x.status === "approved"); return p ? p.name.split(" ")[0] : null; }
+    try { return await rpc("recruiter_name", { p_code:code }); } catch(e){ return null; }
+  },
+  async myRecruits(){
+    if (!LIVE){
+      const db = demoDB.load(); const e = store.get(demoSess("partner"), null); const me = db.partners.find(x => x.email === e); if (!me) return [];
+      return db.partners.filter(p => p.recruited_by === me.id).map(p => { const rs = db.referrals.filter(r => r.partner_id === p.id && r.recruiter_id === me.id);
+        const done = rs.filter(r => ["installed","paid"].includes(r.status));
+        return { name:p.name.split(" ")[0] + " " + (p.name.split(" ")[1] || "").slice(0,1), partner_type:p.partner_type, status:p.status, created_at:p.created_at, jobs_installed:done.length,
+          bonus_owed: done.filter(r => !r.recruiter_paid_at).reduce((s,r) => s + +r.recruiter_bonus, 0), bonus_paid: rs.filter(r => r.recruiter_paid_at).reduce((s,r) => s + +r.recruiter_bonus, 0) }; });
+    }
+    return rpc("my_recruits");
+  },
+  async settings(){
+    if (!LIVE) return demoDB.load().settings || { recruiter_bonus: DEFAULT_BONUS };
+    const { data, error } = await sb.from("program_settings").select("*").eq("id", 1).maybeSingle(); if (error) throw error; return data || { recruiter_bonus: DEFAULT_BONUS };
+  },
+  async saveBonus(v){
+    if (!LIVE){ const db = demoDB.load(); db.settings = { recruiter_bonus:v }; demoDB.save(db); return; }
+    const { error } = await sb.from("program_settings").update({ recruiter_bonus:v }).eq("id", 1); if (error) throw error;
+  },
+
   /* owner */
   async isOwner(){ if (!LIVE) return !!store.get(demoSess("owner"), null); return !!(await rpc("is_owner")); },
   async allReferrals(){
     if (!LIVE){ const db = demoDB.load(); return db.referrals.map(r => ({ ...r, partners: db.partners.find(p => p.id === r.partner_id) })); }
-    const { data, error } = await sb.from("referrals").select("*, partners(id,name,phone,email,partner_type,brokerage,company,status,code)").order("created_at", { ascending:false });
+    const { data, error } = await sb.from("referrals").select("*, partners!referrals_partner_id_fkey(id,name,phone,email,partner_type,brokerage,company,status,code,payout_status)").order("created_at", { ascending:false });
     if (error) throw error; return data;
   },
   async updateReferral(id, patch){
@@ -363,7 +396,7 @@ const api = {
   },
   async partners(){
     if (!LIVE){ const db = demoDB.load(); return db.partners.map(p => ({ ...p, referrals: db.referrals.filter(r => r.partner_id === p.id) })).sort((a,b) => b.created_at.localeCompare(a.created_at)); }
-    const { data, error } = await sb.from("partners").select("*, referrals(status,payout)").order("created_at", { ascending:false });
+    const { data, error } = await sb.from("partners").select("*, referrals!referrals_partner_id_fkey(status,payout)").order("created_at", { ascending:false });
     if (error) throw error; return data;
   },
   async updatePartner(id, patch){
@@ -385,8 +418,10 @@ async function notifyOwner(payload){
 /* ============================================================
    STATE + ROUTING
    ============================================================ */
-const state = { tiers: DEFAULT_TIERS, me: null, project: null, adminFilter: "new", adminTab: "referrals", partnerFilter: null, justApproved: null };
-const VIEWS = { refer:"Refer", mine:"My referrals", how:"How it works" };
+const state = { tiers: DEFAULT_TIERS, me: null, project: null, adminFilter: "new", adminTab: "referrals", partnerFilter: null, justApproved: null, bonus: DEFAULT_BONUS };
+(function(){ const r = new URLSearchParams(location.search).get("ref"); if (r) store.set("jnm_ref", r.trim().toUpperCase()); })();
+const inviteLink = () => appLink() + "?ref=" + encodeURIComponent(state.me?.code || "");
+const VIEWS = { refer:"Refer", mine:"My referrals", invite:"Invite & earn", how:"How it works" };
 function route(){ const h = location.hash.replace("#",""); return h === "owner" ? "owner" : (VIEWS[h] ? h : "refer"); }
 function go(v){ if (location.hash.replace("#","") === v) render(); else location.hash = v; }
 window.addEventListener("hashchange", render);
@@ -424,6 +459,7 @@ async function render(){
   if (!state.me) return viewApply(email);
   if (state.me.status === "declined" || state.me.status === "deactivated") return viewLocked();
   if (v === "mine") return viewMine();
+  if (v === "invite") return viewInvite();
   refreshUnseen();
   return viewRefer();
 }
@@ -501,7 +537,7 @@ function viewApply(email){
   app.innerHTML = `
     ${demoBanner("Demo mode: this application is saved on this device. Approve it from Owner login.")}
     <section class="sec">
-      <div class="sec-h"><span><span class="n">1</span>About you</span><span class="aside">Partner application</span></div>
+      <div class="sec-h"><span><span class="n">1</span>About you</span><span class="aside" id="invBy">Partner application</span></div>
       <div class="sec-b">
         <div class="field"><label class="l" for="aName">Full name</label><input class="in" id="aName" autocomplete="name"></div>
         <div class="field"><label class="l" for="aPhone">Phone</label><input class="in" id="aPhone" type="tel" inputmode="tel" autocomplete="tel"></div>
@@ -527,6 +563,8 @@ function viewApply(email){
     <button class="btn" id="aGo" disabled>Submit application</button>
     ${footer()}`;
   liveFormat($("#aPhone"));
+  const refCode = store.get("jnm_ref", null);
+  if (refCode) api.recruiterName(refCode).then(n => { if (n && $("#invBy")) $("#invBy").textContent = "Invited by " + n; });
   $("#aOut").onclick = async () => { await api.signOut("partner"); render(); };
   $("#aType").onclick = e => { const b = e.target.closest(".opt"); if (!b) return; type = b.dataset.t;
     app.querySelectorAll("#aType .opt").forEach(x => x.setAttribute("aria-pressed", x === b));
@@ -542,7 +580,7 @@ function viewApply(email){
   app.oninput = check; app.onchange = check; check();
   $("#aGo").onclick = async () => {
     const b = $("#aGo"); b.disabled = true; b.textContent = "Submitting…";
-    const p = { name:$("#aName").value.trim(), phone:$("#aPhone").value, type, brokerage:type==="Realtor" ? $("#aBrok").value.trim() : "", company:type==="Contractor" ? $("#aComp").value.trim() : "" };
+    const p = { name:$("#aName").value.trim(), phone:$("#aPhone").value, type, brokerage:type==="Realtor" ? $("#aBrok").value.trim() : "", company:type==="Contractor" ? $("#aComp").value.trim() : "", ref: store.get("jnm_ref", "") || "" };
     try {
       await api.apply(p);
       notifyOwner({ _subject:`New partner application: ${p.name} (${p.type})`, name:p.name, phone:fmtPhone(p.phone), email, type:p.type, brokerage:p.brokerage, company:p.company, review_at:appLink() + "#owner" });
@@ -565,6 +603,15 @@ function viewLocked(){
 /* ============================================================
    PARTNER: SEND REFERRAL
    ============================================================ */
+function payoutNote(hasMoney){
+  const me = state.me; if (!me || me.status !== "approved") return "";
+  const ps = me.payout_status || "not_invited";
+  if (ps === "not_invited" && !hasMoney) return "";
+  const txt = { not_invited:"<b>Your first payout is ready!</b> We'll email you an invite from QuickBooks to set up direct deposit. You'll enter your bank info there, never in this app.",
+    invited:"<b>Your payout is waiting.</b> Check your email for an invite from QuickBooks and finish setting up direct deposit.",
+    ready:"<b>Direct deposit is set up.</b> Payouts go straight to your bank account." }[ps];
+  return `<div class="need ${ps === "ready" ? "ok" : ""}" style="margin-top:18px">${txt}</div>`;
+}
 function pendingBanner(){
   return state.me.status === "pending" ? `<div class="need warn" style="margin-top:18px"><b>Your account is under review.</b> You can send referrals now. They'll be credited to you once you're approved, and we'll let you know.</div>` : "";
 }
@@ -665,7 +712,7 @@ async function viewMine(){
   const inPlay = rows.filter(r => ["signed"].includes(r.status)).reduce((s,r) => s + +r.payout, 0);
   setEarn("Paid to you", money(earned));
   app.innerHTML = `
-    ${pendingBanner()}
+    ${pendingBanner()}${payoutNote(rows.some(r => ["installed","paid"].includes(r.status)))}
     <div class="stats">
       <div class="stat"><small>Signed, in progress</small><b>${money(inPlay)}</b></div>
       <div class="stat"><small>Installed, payout coming</small><b>${money(coming)}</b></div>
@@ -687,6 +734,50 @@ async function viewMine(){
 }
 
 /* ============================================================
+   PARTNER: INVITE & EARN
+   ============================================================ */
+async function viewInvite(){
+  setEarn("Per installed job", money(state.bonus));
+  const app = clearApp();
+  if (state.me.status !== "approved"){
+    app.innerHTML = `${pendingBanner()}<section class="sec"><div class="sec-b"><p style="margin:0"><b class="sans">Your invite link unlocks once you're approved.</b></p><p class="small muted" style="margin:8px 0 0">After that, you'll earn a ${money(state.bonus)} bonus every time someone you invite gets a job installed.</p></div></section>`;
+    return;
+  }
+  app.innerHTML = `<section class="sec"><div class="empty">Loading…</div></section>`;
+  let recs = []; try { recs = await api.myRecruits(); } catch(e){ return loadError(e); }
+  const owed = recs.reduce((s,r) => s + +r.bonus_owed, 0), paid = recs.reduce((s,r) => s + +r.bonus_paid, 0);
+  const link = inviteLink();
+  app.innerHTML = `
+    <section class="sec">
+      <div class="sec-h"><span><span class="n">1</span>Your invite link</span><span class="aside">${esc(state.me.code)}</span></div>
+      <div class="sec-b">
+        <p style="margin:0 0 12px">Know other realtors, contractors or people who meet homeowners? Invite them. Every time someone you invite gets a job installed, <b class="sans" style="color:var(--cyan)">you earn ${money(state.bonus)}</b>. They still earn their full payout.</p>
+        <input class="in" readonly value="${esc(link)}" id="invLink" onclick="this.select()">
+        <div class="row" style="margin-top:10px">
+          <button class="btn" id="share" style="margin:0">Share link</button>
+          <button class="btn ghost" id="copy" style="margin:0">Copy link</button>
+        </div>
+      </div>
+    </section>
+    <div class="stats">
+      <div class="stat"><small>People invited</small><b>${recs.length}</b></div>
+      <div class="stat"><small>Bonus coming</small><b>${money(owed)}</b></div>
+      <div class="stat"><small>Bonus paid</small><b class="c">${money(paid)}</b></div>
+    </div>
+    <section class="sec">
+      <div class="sec-h"><span><span class="n">2</span>People you invited</span></div>
+      ${recs.length ? recs.map(r => `
+        <div class="item"><div class="item-top"><div><b>${esc(r.name)}</b><div class="small muted">${esc(r.partner_type)} · Joined ${fmtDate(r.created_at)}</div></div>
+          <div style="text-align:right"><span class="badge ps-${r.status}">${PSTATUS[r.status]}</span><div class="small" style="margin-top:6px">${r.jobs_installed} installed</div></div></div></div>`).join("")
+      : `<div class="empty">No one yet. Share your link and they'll show up here once they apply.</div>`}
+    </section>
+    ${payoutNote(recs.some(r => +r.jobs_installed > 0))}`;
+  const msg = `I've been sending referrals to JNM Renovation & Construction and getting paid for every job they install. You can join too, it takes a minute: ${link}`;
+  $("#copy").onclick = async () => { try { await navigator.clipboard.writeText(link); toast("Link copied"); } catch { $("#invLink").select(); } };
+  $("#share").onclick = async () => { if (navigator.share) { try { await navigator.share({ title:"JNM Referral Program", text:msg, url:link }); } catch(e){} } else { try { await navigator.clipboard.writeText(msg); toast("Message copied, paste it anywhere"); } catch { $("#invLink").select(); } } };
+}
+
+/* ============================================================
    PARTNER: HOW IT WORKS (public)
    ============================================================ */
 function viewHow(){
@@ -698,7 +789,8 @@ function viewHow(){
         <li><div><b>Apply once</b><span class="muted small">Sign in with your email and tell us who you are. We review every partner.</span></div></li>
         <li><div><b>Send referrals</b><span class="muted small">Client's name, phone, address, and what they need. Make sure they know we'll call.</span></div></li>
         <li><div><b>Track every step</b><span class="muted small">See when we contact your client, set the appointment, sign the contract, and install the job.</span></div></li>
-        <li><div><b>You get paid</b><span class="muted small">Once the job is installed, you earn the payout for that project type.</span></div></li>
+        <li><div><b>You get paid</b><span class="muted small">Once the job is installed, you earn the payout for that project type, by direct deposit through QuickBooks.</span></div></li>
+        <li><div><b>Invite others, earn more</b><span class="muted small">Approved partners get an invite link. Earn ${money(state.bonus)} for every installed job from people you invite.</span></div></li>
       </ol></div>
     </section>
     <section class="sec">
@@ -734,7 +826,9 @@ async function viewOwner(){
 
   const newCount = refs.filter(r => r.status === "new").length;
   const pendingPartners = ps.filter(p => p.status === "pending").length;
-  const owed = refs.filter(r => r.status === "installed").reduce((s,r) => s + +r.payout, 0);
+  const setupCount = ps.filter(p => needsSetup(p, refs)).length;
+  const owed = refs.filter(r => r.status === "installed").reduce((s,r) => s + +r.payout, 0)
+    + refs.filter(r => r.recruiter_id && ["installed","paid"].includes(r.status) && !r.recruiter_paid_at).reduce((s,r) => s + +r.recruiter_bonus, 0);
   const closed = refs.filter(r => ["signed","installed","paid"].includes(r.status)).length;
   setEarn("Owed to partners", money(owed));
   const alerts = newCount + pendingPartners;
@@ -750,7 +844,7 @@ async function viewOwner(){
       <div class="stat"><small>Partners</small><b>${ps.filter(p => p.status === "approved").length}</b></div>
     </div>
     <div class="opts three" style="margin-top:18px" id="aTabs">
-      ${[["referrals","Referrals",newCount],["partners","Partners",pendingPartners],["payouts","Payouts",0]].map(([k,v,c]) => `<button class="opt slim" data-a="${k}" aria-pressed="${at===k}"><b>${v}${c ? ` <span class="count">${c}</span>` : ""}</b></button>`).join("")}
+      ${[["referrals","Referrals",newCount],["partners","Partners",pendingPartners + setupCount],["payouts","Payouts",0]].map(([k,v,c]) => `<button class="opt slim" data-a="${k}" aria-pressed="${at===k}"><b>${v}${c ? ` <span class="count">${c}</span>` : ""}</b></button>`).join("")}
     </div>
     <div id="aBody"></div>
     <div class="foot" style="display:flex;justify-content:center;gap:18px;flex-wrap:wrap">
@@ -759,15 +853,38 @@ async function viewOwner(){
   $("#aTabs").onclick = e => { const b = e.target.closest("[data-a]"); if (!b) return; state.adminTab = b.dataset.a; state.justUpdated = null; viewOwner(); };
   $("#lo").onclick = async () => { await api.signOut("owner"); viewOwner(); };
   $("#refresh").onclick = () => viewOwner();
-  $("#csv").onclick = () => exportCSV(refs);
-  if (at === "referrals") ownerReferrals(refs);
-  if (at === "partners") ownerPartners(ps);
+  $("#csv").onclick = () => exportCSV(refs, ps);
+  if (at === "referrals") ownerReferrals(refs, ps);
+  if (at === "partners") ownerPartners(ps, refs);
   if (at === "payouts") ownerPayouts();
 }
 
+const MONEY_STAGES = ["installed","paid"];
+function needsSetup(p, refs){
+  if (!p || p.status !== "approved" || (p.payout_status || "not_invited") === "ready") return false;
+  return (p.referrals || []).some(r => MONEY_STAGES.includes(r.status)) || refs.some(r => r.recruiter_id === p.id && MONEY_STAGES.includes(r.status));
+}
+function qbBox(p, why){
+  if (!p) return "";
+  const first = esc((p.name || "").split(" ")[0]); const invited = (p.payout_status || "not_invited") === "invited";
+  return `<div class="need warn qb" style="margin-top:12px"><b>${invited ? `Waiting on ${first}'s QuickBooks setup` : `First payout: set up ${first} in QuickBooks`}</b>
+    <div class="small" style="margin-top:6px">${invited ? `${first} was sent the QuickBooks invite. Mark them ready once direct deposit is set up.` : `${why} Add ${first} in QuickBooks as a contractor with "Invite to enter their info" on, then tap Mark invited.`}</div>
+    <div style="display:flex;gap:16px;margin-top:10px;flex-wrap:wrap"><button class="linkbtn" data-qbcopy="${p.id}">Copy info for QuickBooks</button>${invited ? `<button class="linkbtn" data-qbset="ready" data-pidx="${p.id}">Mark ready to pay</button>` : `<button class="linkbtn" data-qbset="invited" data-pidx="${p.id}">Mark invited</button>`}</div></div>`;
+}
+async function copyQB(p){
+  const txt = [p.partner_type === "Realtor" && p.brokerage ? `Pay to: ${p.brokerage} (agent: ${p.name})` : p.name, p.email, fmtPhone(p.phone)].join("\n");
+  try { await navigator.clipboard.writeText(txt); toast("Copied. In QuickBooks: Payroll → Contractors → Add a contractor"); } catch { prompt("Copy this:", txt); }
+}
+function wireQB(root, ps){
+  root.querySelectorAll("[data-qbcopy]").forEach(b => b.onclick = () => copyQB(ps.find(x => x.id === b.dataset.qbcopy)));
+  root.querySelectorAll("[data-qbset]").forEach(b => b.onclick = async () => {
+    try { await api.updatePartner(b.dataset.pidx, { payout_status:b.dataset.qbset }); toast("Payout setup: " + PAYOUT_SETUP[b.dataset.qbset]); viewOwner(); } catch(e){ toast("Couldn't update: " + e.message); }
+  });
+}
 function partnerBadge(s){ return s && s !== "approved" ? ` <span class="badge ps-${s}">Partner ${PSTATUS[s].toLowerCase()}</span>` : ""; }
 
-function ownerReferrals(refs){
+function ownerReferrals(refs, ps){
+  ps = ps || [];
   const f = state.adminFilter;
   const counts = Object.fromEntries(STATUSES.map(s => [s.key, refs.filter(r => r.status === s.key).length]));
   const list = f === "all" ? refs : refs.filter(r => r.status === f);
@@ -793,11 +910,15 @@ function ownerReferrals(refs){
           ${STAMPS.some(k => r[k]) ? `<div class="small muted" style="margin-top:8px">${STAMPS.filter(k => r[k]).map(k => `${(STATUSES.find(s => s.key === k.replace("_at","")) || {}).label} ${shortDate(r[k])}`).join(" · ")}</div>` : ""}
           <div class="status-row">${STATUSES.map(s => `<button data-s="${s.key}" aria-pressed="${r.status===s.key}">${s.label}</button>`).join("")}</div>
           <div class="pay-row"><span class="l" style="margin:0">Payout $</span><input class="in" type="number" inputmode="numeric" min="0" step="25" value="${+r.payout}" data-pay>${r.paid_at ? `<span class="small muted">Paid ${fmtDate(r.paid_at)}</span>` : ""}</div>
+          ${r.recruiter_id ? (() => { const rec = ps.find(x => x.id === r.recruiter_id); const due = ["installed","paid"].includes(r.status);
+            return `<div class="bonus-row"><span>Recruiter bonus <b>${money(r.recruiter_bonus)}</b> to ${esc(rec ? rec.name : "recruiter")}${due ? (r.recruiter_paid_at ? ` · <span style="color:var(--good)">paid ${shortDate(r.recruiter_paid_at)}</span>` : ` · <span style="color:var(--warn)">owed</span>`) : ` · <span class="muted">due at install</span>`}</span>${due ? `<button class="linkbtn" data-bonus>${r.recruiter_paid_at ? "Undo" : "Mark bonus paid"}</button>` : ""}</div>`; })() : ""}
+          ${MONEY_STAGES.includes(r.status) && r.status !== "paid" ? (() => { const pp = ps.find(x => x.id === r.partner_id) || r.partners; return pp && pp.status === "approved" && (pp.payout_status || "not_invited") !== "ready" ? qbBox({ ...r.partners, ...pp }, `This job is installed and ${money(r.payout)} is owed.`) : ""; })() : ""}
+          ${r.recruiter_id && MONEY_STAGES.includes(r.status) && !r.recruiter_paid_at ? (() => { const rp = ps.find(x => x.id === r.recruiter_id); return rp && rp.status === "approved" && (rp.payout_status || "not_invited") !== "ready" ? qbBox(rp, `Their ${money(r.recruiter_bonus)} recruiter bonus is owed.`) : ""; })() : ""}
           ${state.justUpdated === r.id ? updateRow(r) : ""}
         </div>`; }).join("") : `<div class="empty">${f==="new" ? "No new referrals right now. New ones land here first." : "Nothing in this stage."}</div>`}
       </div>
     </section>`;
-  $("#flt").onclick = e => { const b = e.target.closest("[data-f]"); if (!b) return; state.adminFilter = b.dataset.f; state.justUpdated = null; ownerReferrals(refs); };
+  $("#flt").onclick = e => { const b = e.target.closest("[data-f]"); if (!b) return; state.adminFilter = b.dataset.f; state.justUpdated = null; ownerReferrals(refs, ps); };
   $("#aBody").querySelectorAll(".item[data-id]").forEach(el => {
     const r = refs.find(x => x.id === el.dataset.id);
     el.querySelector(".status-row").onclick = async e => {
@@ -806,6 +927,9 @@ function ownerReferrals(refs){
       const patch = statusPatch(r, b.dataset.s);
       try { await api.updateReferral(r.id, patch); toast(`Marked ${b.textContent.toLowerCase()}`); state.justUpdated = r.id; state.adminFilter = b.dataset.s; viewOwner(); } catch(err){ toast("Couldn't update: " + err.message); }
     };
+    wireQB(el, ps);
+    const bb = el.querySelector("[data-bonus]");
+    if (bb) bb.onclick = async () => { try { await api.updateReferral(r.id, { recruiter_paid_at: r.recruiter_paid_at ? null : new Date().toISOString() }); toast(r.recruiter_paid_at ? "Bonus marked unpaid" : "Bonus marked paid"); viewOwner(); } catch(err){ toast("Couldn't update: " + err.message); } };
     el.querySelector("[data-pay]").onchange = async e => {
       const v = Math.max(0, +e.target.value || 0);
       try { await api.updateReferral(r.id, { payout:v }); r.payout = v; toast("Payout saved"); } catch(err){ toast("Couldn't save: " + err.message); }
@@ -820,7 +944,7 @@ function updateRow(r){
     contacted: `we've reached out to ${client}.`,
     appointment: `we have an appointment set with ${client}.`,
     signed: `${client} signed a contract! Your ${money(r.payout)} payout is sent once the job is installed.`,
-    installed: `${client}'s job is installed. Your ${money(r.payout)} payout is on the way.`,
+    installed: `${client}'s job is installed. Your ${money(r.payout)} payout is on the way.` + ((p.payout_status || "not_invited") !== "ready" ? ` You'll get an email from QuickBooks shortly to set up direct deposit so we can send it.` : ""),
     paid: `your ${money(r.payout)} payout for ${client} has been sent. Thank you!`,
     dead: `${client} decided not to move forward right now. Thanks for the referral, and keep them coming.`
   }[r.status];
@@ -830,19 +954,21 @@ function updateRow(r){
     <div style="display:flex;gap:16px;margin-top:8px"><a href="sms:${digits(p.phone)}?&body=${encodeURIComponent(msg)}">Text them</a>${p.email ? `<a href="mailto:${esc(p.email)}?subject=${encodeURIComponent("Update on your JNM referral")}&body=${encodeURIComponent(msg)}">Email them</a>` : ""}<button class="linkbtn" onclick="state.justUpdated=null;this.closest('.need').remove()">Skip</button></div></div>`;
 }
 
-function ownerPartners(ps){
+function ownerPartners(ps, refs){
+  refs = refs || [];
   const counts = Object.fromEntries(Object.keys(PSTATUS).map(k => [k, ps.filter(p => p.status === k).length]));
-  if (!state.partnerFilter) state.partnerFilter = counts.pending ? "pending" : "approved";
+  counts.setup = ps.filter(p => needsSetup(p, refs)).length;
+  if (!state.partnerFilter) state.partnerFilter = counts.pending ? "pending" : counts.setup ? "setup" : "approved";
   const f = state.partnerFilter;
-  const list = f === "all" ? ps : ps.filter(p => p.status === f);
+  const list = f === "all" ? ps : f === "setup" ? ps.filter(p => needsSetup(p, refs)) : ps.filter(p => p.status === f);
   $("#aBody").innerHTML = `
     <section class="sec">
       <div class="sec-h"><span>Partners</span><button class="linkbtn" id="inv" style="font-size:12px">Copy invite link</button></div>
       <div class="filters" id="pflt">
-        ${[["pending","Applications"],["approved","Approved"],["declined","Declined"],["deactivated","Inactive"],["all","All"]].map(([k,v]) => `<button class="chip" data-f="${k}" aria-pressed="${f===k}">${v} ${k==="all" ? ps.length : counts[k]}</button>`).join("")}
+        ${[["pending","Applications"],["setup","Payout setup"],["approved","Approved"],["declined","Declined"],["deactivated","Inactive"],["all","All"]].map(([k,v]) => `<button class="chip" data-f="${k}" aria-pressed="${f===k}">${v} ${k==="all" ? ps.length : counts[k]}</button>`).join("")}
       </div>
       <div style="margin-top:12px">
-      ${list.length ? list.map(p => { const rs = p.referrals || []; const owed = rs.filter(r=>r.status==="installed").reduce((s,r)=>s + +r.payout,0); const pd = rs.filter(r=>r.status==="paid").reduce((s,r)=>s + +r.payout,0); return `
+      ${list.length ? list.map(p => { const rec = ps.find(x => x.id === p.recruited_by); const recruits = ps.filter(x => x.recruited_by === p.id).length; const rs = p.referrals || []; const owed = rs.filter(r=>r.status==="installed").reduce((s,r)=>s + +r.payout,0); const pd = rs.filter(r=>r.status==="paid").reduce((s,r)=>s + +r.payout,0); return `
         <div class="item" data-pid="${p.id}">
           <div class="item-top"><div><b>${esc(p.name)}</b><div class="small muted">${esc(p.partner_type)}${p.brokerage ? " · " + esc(p.brokerage) : ""}${p.company ? " · " + esc(p.company) : ""}</div></div>
             <span class="badge ps-${p.status}">${PSTATUS[p.status]}</span></div>
@@ -851,7 +977,12 @@ function ownerPartners(ps){
             <dt>Email</dt><dd><a href="mailto:${esc(p.email)}">${esc(p.email)}</a></dd>
             <dt>Applied</dt><dd>${fmtDate(p.created_at)}</dd>
             <dt>Referrals</dt><dd>${rs.length} sent${owed ? ` · <span style="color:var(--warn)">${money(owed)} owed</span>` : ""}${pd ? ` · ${money(pd)} paid` : ""}</dd>
+            ${rec ? `<dt>Recruited by</dt><dd>${esc(rec.name)}</dd>` : ""}
+            ${recruits ? `<dt>Recruits</dt><dd>${recruits} partner${recruits > 1 ? "s" : ""}</dd>` : ""}
           </dl>
+          ${p.status === "approved" && (needsSetup(p, refs) || (p.payout_status || "not_invited") !== "not_invited") ? `<span class="l" style="margin:14px 0 6px">Payout setup · QuickBooks</span>
+          <div class="ps-row">${Object.entries(PAYOUT_SETUP).map(([k,v]) => `<button data-ps="${k}" aria-pressed="${(p.payout_status || "not_invited") === k}">${v}</button>`).join("")}</div>
+          <button class="linkbtn" data-qb style="margin-top:10px;font-size:12.5px">Copy info for QuickBooks</button>` : p.status === "approved" ? `<div class="small muted" style="margin-top:12px">QuickBooks setup: after their first installed job</div>` : ""}
           <div class="act-row">
             ${p.status === "pending" ? `<button class="btn sm" data-act="approved">Approve</button><button class="btn sm ghost" data-act="declined">Decline</button>` : ""}
             ${p.status === "approved" ? `<button class="btn sm ghost" data-act="deactivated">Deactivate</button>` : ""}
@@ -862,7 +993,7 @@ function ownerPartners(ps){
       : `<div class="empty">${f==="pending" ? "No applications waiting. Share your invite link to bring in partners." : "No partners here."}</div>`}
       </div>
     </section>`;
-  $("#pflt").onclick = e => { const b = e.target.closest("[data-f]"); if (!b) return; state.partnerFilter = b.dataset.f; state.justApproved = null; ownerPartners(ps); };
+  $("#pflt").onclick = e => { const b = e.target.closest("[data-f]"); if (!b) return; state.partnerFilter = b.dataset.f; state.justApproved = null; ownerPartners(ps, refs); };
   $("#inv").onclick = async () => { try { await navigator.clipboard.writeText(appLink()); toast("Invite link copied"); } catch { prompt("Copy this link:", appLink()); } };
   $("#aBody").querySelectorAll("[data-act]").forEach(b => b.onclick = async () => {
     const id = b.closest("[data-pid]").dataset.pid; const to = b.dataset.act; const p = ps.find(x => x.id === id);
@@ -875,10 +1006,15 @@ function ownerPartners(ps){
       viewOwner();
     } catch(e){ toast("Couldn't update: " + e.message); }
   });
+  $("#aBody").querySelectorAll("[data-ps]").forEach(b => b.onclick = async () => {
+    const id = b.closest("[data-pid]").dataset.pid;
+    try { await api.updatePartner(id, { payout_status:b.dataset.ps }); toast("Payout setup: " + PAYOUT_SETUP[b.dataset.ps]); viewOwner(); } catch(e){ toast("Couldn't update: " + e.message); }
+  });
+  $("#aBody").querySelectorAll("[data-qb]").forEach(b => b.onclick = () => copyQB(ps.find(x => x.id === b.closest("[data-pid]").dataset.pid)));
 }
 function notifyRow(p){
   const first = (p.name || "").split(" ")[0];
-  const msg = `Hi ${first}, you're approved as a JNM Referral Partner! Send referrals anytime at ${appLink()} and track your payouts there too. Thank you, JNM Renovation & Construction`;
+  const msg = `Hi ${first}, you're approved as a JNM Referral Partner! Send referrals anytime at ${appLink()} and track every step there. When your first referral is installed, we'll send you a quick QuickBooks setup for direct deposit. Want to earn more? Check the Invite & earn tab for your personal link. Thank you, JNM Renovation & Construction`;
   return `<div class="need ok" style="margin-top:12px">Let ${esc(first)} know they're approved:
     <div style="display:flex;gap:16px;margin-top:8px"><a href="sms:${digits(p.phone)}?&body=${encodeURIComponent(msg)}">Text them</a><a href="mailto:${esc(p.email)}?subject=${encodeURIComponent("You're approved: JNM Referral Partner")}&body=${encodeURIComponent(msg)}">Email them</a></div></div>`;
 }
@@ -886,16 +1022,21 @@ function notifyRow(p){
 function ownerPayouts(){
   $("#aBody").innerHTML = `<section class="sec"><div class="sec-h"><span>Payout per project type</span><span class="aside">Partners see these</span></div>
     <div class="sec-b">${state.tiers.map(t => `<div class="tier" style="align-items:center"><span>${esc(t.label)}</span><span style="display:flex;align-items:center;gap:6px">$<input class="in" style="width:100px;padding:8px 10px;font-size:15px" type="number" min="0" step="25" value="${+t.amount}" data-k="${t.key}"></span></div>`).join("")}
-    <p class="small muted" style="margin:14px 0 0">Changes apply to new referrals. Existing referrals keep the payout they were sent with, and you can adjust any one of them on its card.</p></div></section>`;
+    <p class="small muted" style="margin:14px 0 0">Changes apply to new referrals. Existing referrals keep the payout they were sent with, and you can adjust any one of them on its card.</p></div></section>
+    <section class="sec"><div class="sec-h"><span>Recruiter bonus</span><span class="aside">One level only</span></div>
+    <div class="sec-b"><div class="tier" style="align-items:center"><span>Per installed job from a recruited partner</span><span style="display:flex;align-items:center;gap:6px">$<input class="in" style="width:100px;padding:8px 10px;font-size:15px" type="number" min="0" step="5" value="${+state.bonus}" id="bonusIn"></span></div>
+    <p class="small muted" style="margin:14px 0 0">Paid to the partner who invited them, on top of the referral payout. Applies to new referrals.</p></div></section>`;
+  $("#bonusIn").onchange = async () => { const v = Math.max(0, +$("#bonusIn").value || 0); try { await api.saveBonus(v); state.bonus = v; toast("Recruiter bonus updated"); } catch(e){ toast("Couldn't save: " + e.message); } };
   $("#aBody").querySelectorAll("[data-k]").forEach(inp => inp.onchange = async () => {
     const v = Math.max(0, +inp.value || 0);
     try { await api.saveTier(inp.dataset.k, v); state.tiers.find(t => t.key === inp.dataset.k).amount = v; toast("Payout updated"); } catch(e){ toast("Couldn't save: " + e.message); }
   });
 }
 
-function exportCSV(refs){
-  const cols = ["created_at","status","contacted_at","appointment_at","signed_at","installed_at","client_name","client_phone","client_address","project","notes","payout","paid_at","partner_name","partner_status","partner_phone","partner_email","partner_type","brokerage","company"];
-  const rows = refs.map(r => { const p = r.partners || {}; return [r.created_at, r.status, r.contacted_at, r.appointment_at, r.signed_at, r.installed_at, r.client_name, fmtPhone(r.client_phone), r.client_address, (state.tiers.find(t=>t.key===r.project_type)||{}).label, r.notes, r.payout, r.paid_at, p.name, p.status, fmtPhone(p.phone), p.email, p.partner_type, p.brokerage, p.company]; });
+function exportCSV(refs, ps){
+  ps = ps || [];
+  const cols = ["created_at","status","contacted_at","appointment_at","signed_at","installed_at","client_name","client_phone","client_address","project","notes","payout","paid_at","partner_name","partner_status","partner_phone","partner_email","partner_type","brokerage","company","recruiter","recruiter_bonus","recruiter_bonus_paid_at"];
+  const rows = refs.map(r => { const p = r.partners || {}; return [r.created_at, r.status, r.contacted_at, r.appointment_at, r.signed_at, r.installed_at, r.client_name, fmtPhone(r.client_phone), r.client_address, (state.tiers.find(t=>t.key===r.project_type)||{}).label, r.notes, r.payout, r.paid_at, p.name, p.status, fmtPhone(p.phone), p.email, p.partner_type, p.brokerage, p.company, (ps.find(x => x.id === r.recruiter_id) || {}).name, r.recruiter_bonus, r.recruiter_paid_at]; });
   const csv = [cols, ...rows].map(row => row.map(v => `"${String(v ?? "").replace(/"/g,'""')}"`).join(",")).join("\n");
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type:"text/csv" }));
   a.download = `jnm-referrals-${new Date().toISOString().slice(0,10)}.csv`; document.body.appendChild(a); a.click(); a.remove();
@@ -904,6 +1045,7 @@ function exportCSV(refs){
 /* ---------- boot ---------- */
 (async function(){
   try { const t = await api.tiers(); if (t && t.length) state.tiers = t; } catch(e){ console.warn("Using default payouts", e); }
+  try { const st = await api.settings(); if (st && st.recruiter_bonus != null) state.bonus = +st.recruiter_bonus; } catch(e){ console.warn("Using default bonus", e); }
   render();
   if (LIVE) setInterval(() => { if (route() === "owner" && document.visibilityState === "visible" && !document.activeElement?.matches("input,textarea")) viewOwner(); }, 60000);
 })();
