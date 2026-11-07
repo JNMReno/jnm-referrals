@@ -7,6 +7,10 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>JNM Referrals</title>
+<meta name="apple-mobile-web-app-title" content="JNM Referrals">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@500;600;700&display=swap" rel="stylesheet">
@@ -307,7 +311,9 @@ const api = {
   },
   async verifyCode(email, code, role){
     if (!LIVE){ if (code !== DEMO_CODE) throw new Error("That code isn't right. In demo mode, use " + DEMO_CODE); store.set(demoSess(role), email.toLowerCase()); return; }
-    const { error } = await sb.auth.verifyOtp({ email, token:code, type:"email" }); if (error) throw new Error("That code isn't right or has expired. Request a new one.");
+    let { error } = await sb.auth.verifyOtp({ email, token:code, type:"email" });
+    if (error) ({ error } = await sb.auth.verifyOtp({ email, token:code, type:"signup" }));
+    if (error) throw new Error("That code isn't right or has expired. Use the code from the most recent email, or request a new one.");
   },
   async signOut(role){ if (!LIVE){ store.set(demoSess(role), null); return; } await sb.auth.signOut(); },
 
@@ -451,7 +457,7 @@ function viewSignIn(role, presetEmail){
       <div class="sec-h"><span><span class="n">2</span>Enter your code</span></div>
       <div class="sec-b">
         <p class="small muted" style="margin:0 0 12px" id="sentTo"></p>
-        <div class="field"><label class="l" for="sCode">6-digit code</label><input class="in code" id="sCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6"></div>
+        <div class="field"><label class="l" for="sCode">Code from the email</label><input class="in code" id="sCode" inputmode="numeric" autocomplete="one-time-code" maxlength="10"></div>
         <div class="need hidden" id="cMsg"></div>
         <button class="btn" id="sVerify">${owner ? "Sign in" : "Continue"}</button>
         <div style="display:flex;justify-content:space-between;margin-top:14px"><button class="linkbtn" id="sResend">Send a new code</button><button class="linkbtn" id="sChange">Use a different email</button></div>
@@ -474,13 +480,13 @@ function viewSignIn(role, presetEmail){
   };
   const verify = async () => {
     const code = digits($("#sCode").value);
-    if (code.length !== 6) return msg($("#cMsg"), "Enter the 6-digit code from the email.", "err");
+    if (code.length < 6 || code.length > 10) return msg($("#cMsg"), "Enter the full code from the most recent email.", "err");
     const b = $("#sVerify"); b.disabled = true; b.textContent = "Checking…";
     try { await api.verifyCode(email, code, role); owner ? viewOwner() : render(); }
     catch(e){ msg($("#cMsg"), e.message, "err"); b.disabled = false; b.textContent = owner ? "Sign in" : "Continue"; }
   };
   $("#sSend").onclick = send; $("#sEmail").onkeydown = e => { if (e.key === "Enter") send(); };
-  $("#sVerify").onclick = verify; $("#sCode").oninput = e => { if (digits(e.target.value).length === 6) verify(); };
+  $("#sVerify").onclick = verify; $("#sCode").onkeydown = e => { if (e.key === "Enter") verify(); };
   $("#sResend").onclick = send;
   $("#sChange").onclick = () => { $("#codeSec").classList.add("hidden"); $("#sEmail").focus(); };
 }
