@@ -48,6 +48,7 @@ header.top{ position:sticky; top:env(safe-area-inset-top,0px); z-index:5; backgr
 .earn small{ display:block; font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--text); }
 .earn strong{ display:block; font-family:var(--sans); font-size:30px; font-weight:700; line-height:1.05; padding-bottom:6px; border-bottom:3px solid var(--cyan); min-width:96px; transition:color .2s; }
 .earn strong.bump{ color:var(--cyan); }
+.earn strong .per{ font-size:15px; font-weight:600; color:var(--cyan); margin-left:3px; letter-spacing:0; }
 
 /* tabs */
 nav.tabs{ max-width:620px; margin:0 auto; display:flex; gap:20px; padding:0 16px; overflow-x:auto; scrollbar-width:none; }
@@ -444,6 +445,7 @@ async function refreshUnseen(){
 }
 function setEarn(label, amt, bump){
   $("#earnLabel").textContent = label; const s = $("#earnAmt"); s.textContent = amt;
+  if (label === "Earn up to") s.insertAdjacentHTML("beforeend", '<span class="per">/Lead</span>');
   if (bump){ s.classList.add("bump"); setTimeout(() => s.classList.remove("bump"), 400); }
 }
 const maxTier = () => Math.max(...state.tiers.map(t => +t.amount));
