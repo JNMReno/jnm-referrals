@@ -203,6 +203,19 @@ input.in.code{ font-size:24px; letter-spacing:.4em; text-align:center; font-weig
 .ps-row{ display:grid; grid-template-columns:repeat(3,1fr); gap:4px; }
 .ps-row button{ background:var(--field); border:1px solid var(--line); border-radius:2px; font-size:11px; letter-spacing:.06em; text-transform:uppercase; padding:9px 2px; cursor:pointer; }
 .ps-row button[aria-pressed="true"]{ background:var(--cyan); color:#00151a; border-color:var(--cyan); font-weight:700; }
+.top-right{ display:flex; align-items:flex-end; gap:12px; flex-shrink:0; }
+.bell{ position:relative; background:none; border:1px solid var(--line); border-radius:50%; width:40px; height:40px; display:grid; place-items:center; color:var(--text); cursor:pointer; margin-bottom:9px; padding:0; }
+.bell:active{ background:var(--field); }
+.bell .dot{ position:absolute; top:-5px; right:-6px; min-width:19px; height:19px; padding:0 5px; border-radius:10px; background:#ef4444; color:#fff; font-family:var(--sans); font-size:11px; font-weight:700; line-height:15px; text-align:center; border:2px solid var(--bg); }
+.feed{ position:fixed; inset:0; z-index:30; background:rgba(0,0,0,.6); display:flex; justify-content:center; align-items:flex-start; padding:calc(env(safe-area-inset-top,0px) + 12px) 12px 12px; }
+.feed-in{ width:100%; max-width:560px; max-height:calc(100% - 24px); overflow-y:auto; background:var(--panel); border:1px solid var(--line); border-radius:6px; }
+.feed-h{ position:sticky; top:0; display:flex; justify-content:space-between; align-items:center; padding:16px; background:var(--panel); border-bottom:1px solid var(--line); font-size:12.5px; letter-spacing:.12em; text-transform:uppercase; }
+.note{ display:block; width:100%; text-align:left; background:none; border:0; border-bottom:1px solid var(--line-soft); padding:14px 16px 14px 30px; position:relative; cursor:pointer; color:var(--text); font:inherit; }
+.note.unread::before{ content:""; position:absolute; left:12px; top:20px; width:8px; height:8px; border-radius:50%; background:var(--cyan); }
+.note-t{ display:block; font-family:var(--sans); font-weight:700; font-size:15px; }
+.note-b{ display:block; font-size:13px; color:var(--muted); margin-top:3px; }
+.note-d{ display:block; font-size:11.5px; color:var(--muted); margin-top:6px; letter-spacing:.04em; }
+@media (max-width:400px){ .brand-txt span{ letter-spacing:.06em; } .earn strong{ font-size:26px; min-width:0; } .top-right{ gap:10px; } }
 </style>
 </head>
 <body>
@@ -212,13 +225,22 @@ input.in.code{ font-size:24px; letter-spacing:.4em; text-align:center; font-weig
       <img src="data:image/png;base64,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" alt="Revamp Pros">
       <div class="brand-txt"><b>JNM</b><span>Referral Program</span></div>
     </div>
-    <div class="earn"><small id="earnLabel">You earn up to</small><strong id="earnAmt">$800</strong></div>
+    <div class="top-right">
+      <button class="bell hidden" id="bell" aria-label="Updates"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><span class="dot hidden" id="bellDot"></span></button>
+      <div class="earn"><small id="earnLabel">You earn up to</small><strong id="earnAmt">$800</strong></div>
+    </div>
   </div>
   <nav class="tabs" id="tabs" role="tablist"></nav>
 </header>
 
 <main class="wrap" id="app"></main>
 <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+<div id="feed" class="feed hidden" role="dialog" aria-modal="true" aria-label="Updates">
+  <div class="feed-in">
+    <div class="feed-h"><span>Updates</span><button class="linkbtn" id="feedClose">Close</button></div>
+    <div id="feedList"></div>
+  </div>
+</div>
 
 <script>
 /* ============================================================
@@ -348,6 +370,7 @@ const api = {
       const partner = db.partners.find(x => x.email === e); const tier = db.tiers.find(t => t.key === r.project);
       if (!partner || !["pending","approved"].includes(partner.status)) throw new Error("Your account can't send referrals right now");
       db.referrals.unshift({ id:crypto.randomUUID(), partner_id:partner.id, client_name:r.name, client_phone:digits(r.phone), client_address:r.address, project_type:r.project, notes:r.notes, consent:true, status:"new", payout:tier.amount, recruiter_id: partner.recruited_by || null, recruiter_bonus: partner.recruited_by ? (db.settings?.recruiter_bonus ?? DEFAULT_BONUS) : 0, recruiter_paid_at:null, created_at:new Date().toISOString(), paid_at:null });
+      db.notes = db.notes || []; db.notes.unshift({ id:crypto.randomUUID(), to:"__owner", title:`New referral: ${tier.label}`, body:`${r.name} from ${partner.name} · ${money(tier.amount)}`, path:"#owner", created_at:new Date().toISOString(), read_at:null });
       demoDB.save(db); return tier.amount;
     }
     return rpc("submit_referral", { p_project:r.project, p_client_name:r.name, p_client_phone:r.phone, p_client_address:r.address, p_notes:r.notes || "", p_consent:true });
@@ -384,6 +407,19 @@ const api = {
     const { error } = await sb.from("program_settings").update({ recruiter_bonus:v }).eq("id", 1); if (error) throw error;
   },
 
+  async notifications(role){
+    if (!LIVE){ const db = demoDB.load(); const who = role === "owner" ? "__owner" : store.get(demoSess("partner"), null); return (db.notes || []).filter(n => n.to === who).slice(0,100); }
+    return rpc("my_notifications", { p_owner: role === "owner" });
+  },
+  async unread(role){
+    if (!LIVE){ const db = demoDB.load(); const who = role === "owner" ? "__owner" : store.get(demoSess("partner"), null); return (db.notes || []).filter(n => n.to === who && !n.read_at).length; }
+    return rpc("unread_notifications", { p_owner: role === "owner" });
+  },
+  async markRead(role){
+    if (!LIVE){ const db = demoDB.load(); const who = role === "owner" ? "__owner" : store.get(demoSess("partner"), null); (db.notes || []).forEach(n => { if (n.to === who && !n.read_at) n.read_at = new Date().toISOString(); }); demoDB.save(db); return; }
+    return rpc("mark_notifications_read", { p_owner: role === "owner" });
+  },
+
   /* owner */
   async isOwner(){ if (!LIVE) return !!store.get(demoSess("owner"), null); return !!(await rpc("is_owner")); },
   async allReferrals(){
@@ -392,7 +428,10 @@ const api = {
     if (error) throw error; return data;
   },
   async updateReferral(id, patch){
-    if (!LIVE){ const db = demoDB.load(); Object.assign(db.referrals.find(x => x.id === id), patch); demoDB.save(db); return; }
+    if (!LIVE){ const db = demoDB.load(); const r = db.referrals.find(x => x.id === id); const before = r.status; Object.assign(r, patch);
+      if (patch.status && patch.status !== before){ const p = db.partners.find(x => x.id === r.partner_id); db.notes = db.notes || [];
+        db.notes.unshift({ id:crypto.randomUUID(), to:p.email, title:`${r.client_name.split(" ")[0]}: ${statusLabel(patch.status)}`, body:`Your referral for ${r.client_name} moved to ${statusLabel(patch.status).toLowerCase()}.`, path:"#mine", created_at:new Date().toISOString(), read_at:null }); }
+      demoDB.save(db); return; }
     const { error } = await sb.from("referrals").update(patch).eq("id", id); if (error) throw error;
   },
   async partners(){
@@ -401,7 +440,9 @@ const api = {
     if (error) throw error; return data;
   },
   async updatePartner(id, patch){
-    if (!LIVE){ const db = demoDB.load(); Object.assign(db.partners.find(x => x.id === id), patch); demoDB.save(db); return; }
+    if (!LIVE){ const db = demoDB.load(); const p = db.partners.find(x => x.id === id); const before = p.status; Object.assign(p, patch);
+      if (patch.status === "approved" && before !== "approved"){ db.notes = db.notes || []; db.notes.unshift({ id:crypto.randomUUID(), to:p.email, title:`Welcome aboard, ${p.name.split(" ")[0]}!`, body:"You're approved as a JNM Referral Partner. Send referrals anytime and track every step here.", path:"#refer", created_at:new Date().toISOString(), read_at:null }); }
+      demoDB.save(db); return; }
     const { error } = await sb.from("partners").update(patch).eq("id", id); if (error) throw error;
   },
   async saveTier(key, amount){
@@ -452,7 +493,7 @@ const maxTier = () => Math.max(...state.tiers.map(t => +t.amount));
 const minTier = () => Math.min(...state.tiers.map(t => +t.amount));
 
 async function render(){
-  const v = route(); renderTabs(v); window.scrollTo(0,0); clearApp();
+  const v = route(); renderTabs(v); window.scrollTo(0,0); clearApp(); hideBell();
   if (v === "how") return viewHow();
   if (v === "owner") return viewOwner();
   const email = await api.email("partner");
@@ -460,6 +501,7 @@ async function render(){
   try { state.me = await api.myPartner(); } catch(e){ return loadError(e); }
   if (!state.me) return viewApply(email);
   if (state.me.status === "declined" || state.me.status === "deactivated") return viewLocked();
+  refreshBell("partner");
   if (v === "mine") return viewMine();
   if (v === "invite") return viewInvite();
   refreshUnseen();
@@ -506,6 +548,60 @@ const showHomeTip = (signedIn) => {
   if (!signedIn && store.get("jnm_ref", null)) return ""; // invited: apply first so the invite is credited, then show the tip
   try { return sessionStorage.getItem("jnm_a2hs_later") ? "" : homeTip(signedIn); } catch { return homeTip(signedIn); }
 };
+/* ---------- phone notifications (web push) ---------- */
+const PUSH_OK = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+let swReg = null;
+if (LIVE && PUSH_OK && location.protocol === "https:") navigator.serviceWorker.register("sw.js").then(r => { swReg = r; }).catch(e => console.warn("SW", e));
+function b64u(str){ const pad = "=".repeat((4 - str.length % 4) % 4); const raw = atob((str + pad).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from(raw, ch => ch.charCodeAt(0)); }
+async function saveSub(sub){ const j = sub.toJSON(); await rpc("save_push_subscription", { p_endpoint:j.endpoint, p_p256dh:j.keys.p256dh, p_auth:j.keys.auth }); }
+async function syncPush(){
+  try { if (!LIVE || !PUSH_OK || !state.vapid || Notification.permission !== "granted") return;
+    const reg = swReg || await navigator.serviceWorker.ready; const sub = await reg.pushManager.getSubscription(); if (sub) await saveSub(sub); } catch(e){ console.warn("push sync", e); }
+}
+function notifCard(role){
+  if (!LIVE || !PUSH_OK || !state.vapid || location.protocol !== "https:") return "";
+  if (Notification.permission !== "default" || store.get("jnm_push_skip_" + role, false)) return "";
+  if (IS_IOS && !IS_STANDALONE()) return "";
+  const owner = role === "owner";
+  return `<section class="sec" id="pushCard"><div class="sec-h"><span><span class="n">●</span>Turn on notifications</span></div><div class="sec-b">
+    <p class="small" style="margin:0 0 4px">${owner ? "Get a notification on this device the moment a new referral or partner application comes in." : "Get a notification on your phone when we contact your client, set the appointment, sign, install, and pay you."}</p>
+    <button class="btn" id="pushOn">Turn on notifications</button>
+    <div style="text-align:center;margin-top:12px"><button class="linkbtn" id="pushSkip">Not now</button></div></div></section>`;
+}
+function wireNotif(role){
+  const c = $("#pushCard"); if (!c) return;
+  $("#pushSkip").onclick = () => { store.set("jnm_push_skip_" + role, true); c.remove(); };
+  $("#pushOn").onclick = async () => {
+    const b = $("#pushOn"); b.disabled = true; b.textContent = "Turning on…";
+    try {
+      const perm = await Notification.requestPermission();
+      if (perm !== "granted"){ c.remove(); toast("Notifications are off. You'll still get email updates."); return; }
+      const reg = swReg || await navigator.serviceWorker.ready;
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly:true, applicationServerKey:b64u(state.vapid) });
+      await saveSub(sub); c.remove(); toast("Notifications are on");
+    } catch(e){ console.error(e); b.disabled = false; b.textContent = "Turn on notifications"; toast("Couldn't turn on notifications: " + e.message); }
+  };
+}
+/* ---------- bell + Updates feed ---------- */
+let bellRole = null;
+function timeAgo(iso){ const s = (Date.now() - new Date(iso)) / 1000; if (s < 60) return "Just now"; if (s < 3600) return Math.floor(s/60) + "m ago"; if (s < 86400) return Math.floor(s/3600) + "h ago"; if (s < 604800) return Math.floor(s/86400) + "d ago"; return fmtDate(iso); }
+function hideBell(){ bellRole = null; $("#bell").classList.add("hidden"); }
+async function refreshBell(role){
+  bellRole = role; $("#bell").classList.remove("hidden");
+  try { const n = await api.unread(role); const d = $("#bellDot"); d.textContent = n > 9 ? "9+" : n; d.classList.toggle("hidden", !n); $("#bell").setAttribute("aria-label", n ? `Updates, ${n} unread` : "Updates"); } catch(e){ console.warn("bell", e); }
+}
+async function openFeed(){
+  if (!bellRole) return; const role = bellRole;
+  const f = $("#feed"), list = $("#feedList"); f.classList.remove("hidden"); document.body.style.overflow = "hidden";
+  list.innerHTML = `<div class="empty">Loading…</div>`;
+  let rows = []; try { rows = await api.notifications(role); } catch(e){ list.innerHTML = `<div class="need err" style="margin:16px">Couldn't load updates: ${esc(e.message)}</div>`; return; }
+  list.innerHTML = rows.length ? rows.map(n => `<button class="note${n.read_at ? "" : " unread"}" data-path="${esc(n.path || "")}"><span class="note-t">${esc(n.title)}</span>${n.body ? `<span class="note-b">${esc(n.body)}</span>` : ""}<span class="note-d">${timeAgo(n.created_at)}</span></button>`).join("")
+    : `<div class="empty" style="margin:16px">${role === "owner" ? "New referrals and applications will show up here." : "Updates on your referrals and payouts will show up here."}</div>`;
+  list.querySelectorAll(".note").forEach(b => b.onclick = () => { closeFeed(); const pth = (b.dataset.path || "").replace("#",""); if (pth) go(pth); });
+  try { await api.markRead(role); $("#bellDot").classList.add("hidden"); } catch(e){}
+}
+function closeFeed(){ $("#feed").classList.add("hidden"); document.body.style.overflow = ""; }
 const demoBanner = msg => !LIVE ? `<div class="demo">${msg}</div>` : "";
 const footer = () => `<div class="foot"><button class="linkbtn" onclick="go('owner')">Owner login</button></div>`;
 
@@ -667,6 +763,7 @@ function viewRefer(){
     ${demoBanner("Demo mode: referrals are saved on this device only.")}
     ${pendingBanner()}
     ${showHomeTip(true)}
+    ${notifCard("partner")}
     <section class="sec">
       <div class="sec-h"><span><span class="n">1</span>Project type</span><span class="aside">Payout when it closes</span></div>
       <div class="sec-b"><div class="opts" id="projOpts">
@@ -687,7 +784,7 @@ function viewRefer(){
     <button class="btn" id="send" disabled>Send referral</button>
     <div class="sending-as small" style="margin-top:16px"><span class="muted">Signed in as ${esc(me.name)} · ${esc(me.partner_type)}</span><button class="linkbtn" id="lo">Sign out</button></div>
     ${footer()}`;
-  liveFormat($("#cPhone")); wireHomeTip();
+  liveFormat($("#cPhone")); wireHomeTip(); wireNotif("partner"); syncPush();
   $("#lo").onclick = async () => { await api.signOut("partner"); state.project = null; render(); };
   $("#projOpts").onclick = e => { const b = e.target.closest(".opt"); if (!b) return; state.project = b.dataset.k;
     app.querySelectorAll("#projOpts .opt").forEach(x => x.setAttribute("aria-pressed", x === b));
@@ -757,6 +854,7 @@ async function viewMine(){
   setEarn("Paid to you", money(earned));
   app.innerHTML = `
     ${pendingBanner()}${payoutNote(rows.some(r => ["installed","paid"].includes(r.status)))}
+    ${notifCard("partner")}
     <div class="stats">
       <div class="stat"><small>Signed, in progress</small><b>${money(inPlay)}</b></div>
       <div class="stat"><small>Installed, payout coming</small><b>${money(coming)}</b></div>
@@ -774,6 +872,7 @@ async function viewMine(){
       : `<div class="empty">No referrals yet. Your first one takes about 30 seconds.</div>`}
     </section>
     <button class="btn" onclick="go('refer')">Send a referral</button>`;
+  wireNotif("partner");
   const now = Object.fromEntries(rows.map(r => [r.id, lastUpdate(r)])); store.set(seenKey(), now); setUnseen(0);
 }
 
@@ -881,6 +980,7 @@ async function viewOwner(){
   const at = state.adminTab;
   app.innerHTML = `
     ${demoBanner("Demo mode: showing data saved on this device.")}
+    ${notifCard("owner")}
     <div class="stats four">
       <div class="stat"><small>New referrals</small><b class="c">${newCount}</b></div>
       <div class="stat"><small>Applications</small><b class="${pendingPartners ? "w" : ""}">${pendingPartners}</b></div>
@@ -894,6 +994,7 @@ async function viewOwner(){
     <div class="foot" style="display:flex;justify-content:center;gap:18px;flex-wrap:wrap">
       <button class="linkbtn" id="csv">Export CSV</button><button class="linkbtn" id="refresh">Refresh</button><button class="linkbtn" id="lo">Sign out</button>
     </div>`;
+  wireNotif("owner"); syncPush(); refreshBell("owner");
   $("#aTabs").onclick = e => { const b = e.target.closest("[data-a]"); if (!b) return; state.adminTab = b.dataset.a; state.justUpdated = null; viewOwner(); };
   $("#lo").onclick = async () => { await api.signOut("owner"); viewOwner(); };
   $("#refresh").onclick = () => viewOwner();
@@ -993,7 +1094,7 @@ function updateRow(r){
     dead: `${client} decided not to move forward right now. Thanks for the referral, and keep them coming.`
   }[r.status];
   const msg = `Hi ${first}, update on your JNM referral: ${line} Track it anytime at ${appLink()}`;
-  return `<div class="need ok" style="margin-top:12px">Let ${esc(first)} know:
+  return `<div class="need ok" style="margin-top:12px"><div class="small muted" style="margin-bottom:6px">${esc(first)} gets this update by email automatically, plus a phone notification if they turned them on. Want to add a personal text?</div>
     <div class="small muted" style="margin-top:6px">${esc(msg)}</div>
     <div style="display:flex;gap:16px;margin-top:8px"><a href="sms:${digits(p.phone)}?&body=${encodeURIComponent(msg)}">Text them</a>${p.email ? `<a href="mailto:${esc(p.email)}?subject=${encodeURIComponent("Update on your JNM referral")}&body=${encodeURIComponent(msg)}">Email them</a>` : ""}<button class="linkbtn" onclick="state.justUpdated=null;this.closest('.need').remove()">Skip</button></div></div>`;
 }
@@ -1059,7 +1160,7 @@ function ownerPartners(ps, refs){
 function notifyRow(p){
   const first = (p.name || "").split(" ")[0];
   const msg = `Hi ${first}, you're approved as a JNM Referral Partner! Send referrals anytime at ${appLink()} and track every step there. When your first referral is installed, we'll send you a quick QuickBooks setup for direct deposit. Want to earn more? Check the Invite & earn tab for your personal link. Thank you, JNM Renovation & Construction`;
-  return `<div class="need ok" style="margin-top:12px">Let ${esc(first)} know they're approved:
+  return `<div class="need ok" style="margin-top:12px"><div class="small muted" style="margin-bottom:6px">${esc(first)} gets an approval email automatically. Want to add a personal text?</div>
     <div style="display:flex;gap:16px;margin-top:8px"><a href="sms:${digits(p.phone)}?&body=${encodeURIComponent(msg)}">Text them</a><a href="mailto:${esc(p.email)}?subject=${encodeURIComponent("You're approved: JNM Referral Partner")}&body=${encodeURIComponent(msg)}">Email them</a></div></div>`;
 }
 
@@ -1087,9 +1188,13 @@ function exportCSV(refs, ps){
 }
 
 /* ---------- boot ---------- */
+$("#bell").onclick = openFeed; $("#feedClose").onclick = closeFeed;
+$("#feed").onclick = e => { if (e.target.id === "feed") closeFeed(); };
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeFeed(); });
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && bellRole) refreshBell(bellRole); });
 (async function(){
   try { const t = await api.tiers(); if (t && t.length) state.tiers = t; } catch(e){ console.warn("Using default payouts", e); }
-  try { const st = await api.settings(); if (st && st.recruiter_bonus != null) state.bonus = +st.recruiter_bonus; } catch(e){ console.warn("Using default bonus", e); }
+  try { const st = await api.settings(); if (st && st.recruiter_bonus != null) state.bonus = +st.recruiter_bonus; if (st && st.vapid_public_key) state.vapid = st.vapid_public_key; } catch(e){ console.warn("Using default bonus", e); }
   render();
   if (LIVE) setInterval(() => { if (route() === "owner" && document.visibilityState === "visible" && !document.activeElement?.matches("input,textarea")) viewOwner(); }, 60000);
 })();
