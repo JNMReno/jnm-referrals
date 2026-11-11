@@ -216,6 +216,12 @@ input.in.code{ font-size:24px; letter-spacing:.4em; text-align:center; font-weig
 .note-b{ display:block; font-size:13px; color:var(--muted); margin-top:3px; }
 .note-d{ display:block; font-size:11.5px; color:var(--muted); margin-top:6px; letter-spacing:.04em; }
 @media (max-width:400px){ .brand-txt span{ letter-spacing:.06em; } .earn strong{ font-size:26px; min-width:0; } .top-right{ gap:10px; } }
+.lang{ display:flex; justify-content:center; align-items:center; gap:10px; margin-top:26px; font-size:13px; color:var(--muted); }
+.lang button{ background:none; border:0; padding:6px 4px; color:var(--muted); cursor:pointer; font:inherit; letter-spacing:.04em; }
+.lang button[aria-pressed="true"]{ color:var(--cyan); font-weight:600; text-decoration:underline; text-underline-offset:4px; }
+.intro{ position:relative; }
+.lang-top{ position:absolute; top:12px; right:12px; background:var(--field); border:1px solid var(--line); color:var(--cyan); border-radius:14px; padding:5px 12px; font:inherit; font-size:12px; font-weight:600; cursor:pointer; }
+.intro h1{ padding-right:84px; }
 </style>
 </head>
 <body>
@@ -292,7 +298,7 @@ const PSTATUS = { pending:"Pending", approved:"Approved", declined:"Declined", d
 const DEMO_CODE = "123456";
 const DEFAULT_BONUS = 50;
 const PAYOUT_SETUP = { not_invited:"Not invited", invited:"Invited", ready:"Ready to pay" };
-const shortDate = iso => iso ? new Date(iso).toLocaleDateString("en-US", { month:"short", day:"numeric" }) : "";
+const shortDate = iso => iso ? new Date(iso).toLocaleDateString(LOC(), { month:"short", day:"numeric" }) : "";
 
 /* ---------- helpers ---------- */
 const $ = (s, el=document) => el.querySelector(s);
@@ -300,7 +306,8 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&l
 const money = n => "$" + Number(n || 0).toLocaleString("en-US", { maximumFractionDigits:0 });
 const digits = s => String(s || "").replace(/\D/g, "");
 const fmtPhone = s => { const d = digits(s).slice(-10); return d.length === 10 ? `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}` : (s || ""); };
-const fmtDate = iso => iso ? new Date(iso).toLocaleDateString("en-US", { month:"short", day:"numeric", year:"numeric" }) : "";
+const LOC = () => (typeof LANG !== "undefined" && LANG === "es" && location.hash.replace("#","") !== "owner") ? "es-US" : "en-US";
+const fmtDate = iso => iso ? new Date(iso).toLocaleDateString(LOC(), { month:"short", day:"numeric", year:"numeric" }) : "";
 const validEmail = e => /^\S+@\S+\.\S+$/.test(String(e).trim());
 const appLink = () => location.origin + location.pathname;
 const store = {
@@ -383,6 +390,7 @@ const api = {
     return rpc("my_referrals");
   },
 
+  async setLang(l){ if (!LIVE) return; try { await rpc("set_my_lang", { p_lang:l }); } catch(e){ console.warn("lang", e); } },
   async recruiterName(code){
     if (!code) return null;
     if (!LIVE){ const p = demoDB.load().partners.find(x => x.code === code.toUpperCase() && x.status === "approved"); return p ? p.name.split(" ")[0] : null; }
@@ -424,7 +432,7 @@ const api = {
   async isOwner(){ if (!LIVE) return !!store.get(demoSess("owner"), null); return !!(await rpc("is_owner")); },
   async allReferrals(){
     if (!LIVE){ const db = demoDB.load(); return db.referrals.map(r => ({ ...r, partners: db.partners.find(p => p.id === r.partner_id) })); }
-    const { data, error } = await sb.from("referrals").select("*, partners!referrals_partner_id_fkey(id,name,phone,email,partner_type,brokerage,company,status,code,payout_status)").order("created_at", { ascending:false });
+    const { data, error } = await sb.from("referrals").select("*, partners!referrals_partner_id_fkey(id,name,phone,email,partner_type,brokerage,company,status,code,payout_status,lang)").order("created_at", { ascending:false });
     if (error) throw error; return data;
   },
   async updateReferral(id, patch){
@@ -502,12 +510,148 @@ async function render(){
   if (!state.me) return viewApply(email);
   if (state.me.status === "declined" || state.me.status === "deactivated") return viewLocked();
   refreshBell("partner");
+  if (!state.langSynced){ state.langSynced = true; api.setLang(LANG); }
   if (v === "mine") return viewMine();
   if (v === "invite") return viewInvite();
   refreshUnseen();
   return viewRefer();
 }
 function loadError(e){ console.error(e); clearApp().innerHTML = `<div class="need err" style="margin-top:18px">Couldn't load your account: ${esc(e.message)}. Check your connection and try again.</div><button class="btn ghost" onclick="render()">Try again</button>`; }
+/* ---------- language: English / Español ---------- */
+let LANG = (() => { const saved = store.get("jnm_lang", null); if (saved === "en" || saved === "es") return saved; return /^es\b/i.test(navigator.language || "") ? "es" : "en"; })();
+document.documentElement.lang = LANG;
+const ES = {
+  "Refer":"Referir", "My referrals":"Mis referidos", "Invite & earn":"Invita y gana", "How it works":"Cómo funciona",
+  "Earn up to":"Gana hasta", "/Lead":"/Referido", "You earn":"Tú ganas", "Paid to you":"Te hemos pagado", "Per installed job":"Por trabajo instalado", "Account":"Cuenta",
+  "Referral Program":"Referidos", "Owner login":"Acceso del dueño",
+  "Know someone who needs work done? Get paid for it.":"¿Conoces a alguien que necesita trabajos en su casa? Gana dinero por recomendarlo.",
+  "Sign in or apply":"Inicia sesión o solicita", "No password needed":"Sin contraseña", "Email":"Correo electrónico", "Email me a code":"Envíame un código",
+  "New partners: sign in with your email first, then fill out a short application.":"Socios nuevos: inicia sesión con tu correo y luego llena una solicitud corta.",
+  "Enter your code":"Ingresa tu código", "Code from the email":"Código del correo", "Continue":"Continuar", "Send a new code":"Enviar un código nuevo", "Use a different email":"Usar otro correo",
+  "Enter a valid email address.":"Ingresa un correo electrónico válido.", "Enter the full code from the most recent email.":"Ingresa el código completo del correo más reciente.",
+  "That code isn't right or has expired. Use the code from the most recent email, or request a new one.":"Ese código no es correcto o ya venció. Usa el código del correo más reciente o pide uno nuevo.",
+  "Sending…":"Enviando…", "Checking…":"Verificando…", "Submitting…":"Enviando…", "Turning on…":"Activando…", "Loading…":"Cargando…", "Loading your referrals…":"Cargando tus referidos…", "Try again":"Intentar de nuevo",
+  "About you":"Sobre ti", "Partner application":"Solicitud de socio", "Full name":"Nombre completo", "Phone":"Teléfono", "Not you?":"¿No eres tú?", "I am a":"Soy",
+  "Realtor":"Agente de bienes raíces", "Licensed agent":"Agente con licencia", "Contractor":"Contratista", "Trade or service pro":"Profesional de oficios o servicios",
+  "Homeowner":"Propietario", "Past client or neighbor":"Cliente anterior o vecino", "Affiliate":"Afiliado", "Anyone else":"Cualquier otra persona",
+  "Brokerage":"Agencia (brokerage)", "@Realtor payouts go through your broker":"@Los pagos a agentes se hacen a través de tu bróker", "Company or trade":"Empresa u oficio", "@e.g. ABC Plumbing":"@ej. ABC Plumbing",
+  "Payout terms":"Condiciones de pago", "I agree to the payout terms":"Acepto las condiciones de pago", "Submit application":"Enviar solicitud", "Ready to submit.":"Listo para enviar.", "Application submitted":"Solicitud enviada",
+  "Payout is sent after the job is installed. One payout per address. You'll need a W-9 on file before your first payout.":"El pago se envía después de que el trabajo esté instalado. Un pago por dirección. Necesitarás un formulario W-9 antes de tu primer pago.",
+  "Agree to terms":"Aceptar condiciones", "Project type":"Tipo de proyecto", "Client name":"Nombre del cliente", "Client phone":"Teléfono del cliente", "Address":"Dirección", "Client OK to contact":"Permiso del cliente para contactarlo",
+  "Your application wasn't approved.":"Tu solicitud no fue aprobada.", "Your partner account is inactive.":"Tu cuenta de socio está inactiva.",
+  "If you think this is a mistake, reach out to JNM at":"Si crees que es un error, comunícate con JNM al", "If you think this is a mistake, reach out to JNM.":"Si crees que es un error, comunícate con JNM.",
+  "Sign out":"Cerrar sesión",
+  "Your account is under review.":"Tu cuenta está en revisión.", "You can send referrals now. They'll be credited to you once you're approved, and we'll let you know.":"Ya puedes enviar referidos. Se te acreditarán cuando seas aprobado y te avisaremos.",
+  "Your first payout is ready!":"¡Tu primer pago está listo!",
+  "We'll email you an invite from QuickBooks to set up direct deposit. You'll enter your bank info there, never in this app.":"Te enviaremos por correo una invitación de QuickBooks para configurar el depósito directo. Ingresarás tus datos bancarios ahí, nunca en esta app.",
+  "Your payout is waiting.":"Tu pago te está esperando.", "Check your email for an invite from QuickBooks and finish setting up direct deposit.":"Revisa tu correo: te llegó una invitación de QuickBooks para terminar de configurar el depósito directo.",
+  "Direct deposit is set up.":"El depósito directo está configurado.", "Payouts go straight to your bank account.":"Los pagos van directo a tu cuenta bancaria.",
+  "Payout when it closes":"Pago al instalarse", "Client info":"Datos del cliente", "@First and last name":"@Nombre y apellido", "Project address":"Dirección del proyecto", "@Street, city, ZIP":"@Calle, ciudad, código postal",
+  "Notes (optional)":"Notas (opcional)", "@Best time to call, what they mentioned, etc.":"@Mejor hora para llamar, lo que mencionó, etc.",
+  "They're expecting our call":"Están esperando nuestra llamada", "The client agreed to be contacted by JNM.":"El cliente aceptó que JNM lo contacte.", "Send referral":"Enviar referido", "Ready to send.":"Listo para enviar.",
+  "Kitchen Remodel":"Remodelación de cocina", "Bathroom Remodel":"Remodelación de baño", "Impact Windows & Doors":"Ventanas y puertas de impacto", "Full Construction / Addition":"Construcción completa / Ampliación",
+  "Driveway":"Entrada de autos", "Gutters":"Canaletas", "Other / Not sure":"Otro / No estoy seguro", "Other":"Otro",
+  "Referral sent":"Referido enviado", "This referral is held until your partner account is approved.":"Este referido queda en espera hasta que tu cuenta de socio sea aprobada.",
+  "Send another referral":"Enviar otro referido", "Track my referrals":"Ver mis referidos", "Tip: add this page to your home screen so it's one tap next time.":"Consejo: agrega esta página a tu pantalla de inicio para tenerla a un toque.",
+  "Signed, in progress":"Firmado, en proceso", "Installed, payout coming":"Instalado, pago en camino", "Paid":"Pagado", "paid":"pagado", "at install":"al instalarse", "Your referrals":"Tus referidos", "Updated":"Actualizado",
+  "Received":"Recibido", "Contacted":"Contactado", "Appt set":"Cita", "Contract signed":"Contrato firmado", "Installed":"Instalado", "Not moving forward":"No continuará",
+  "Next: we reach out to your client":"Siguiente: contactaremos a tu cliente", "Next: setting the appointment":"Siguiente: programar la cita", "Next: contract":"Siguiente: contrato",
+  "Next: installation, then your payout":"Siguiente: instalación y luego tu pago", "Your payout is on the way":"Tu pago está en camino", "Paid. Thank you!":"Pagado. ¡Gracias!", "Your client isn't moving forward right now":"Tu cliente no continuará por ahora",
+  "No referrals yet. Your first one takes about 30 seconds.":"Aún no tienes referidos. El primero toma unos 30 segundos.", "Send a referral":"Enviar un referido",
+  "Your invite link":"Tu enlace de invitación",
+  "Know other realtors, contractors or people who meet homeowners? Invite them. Every time someone you invite gets a job installed,":"¿Conoces a otros agentes, contratistas o personas que tratan con propietarios? Invítalos. Cada vez que alguien que invitaste tenga un trabajo instalado,",
+  ". They still earn their full payout.":". Ellos siguen recibiendo su pago completo.", "Share link":"Compartir enlace", "Copy link":"Copiar enlace",
+  "People invited":"Personas invitadas", "Bonus coming":"Bono en camino", "Bonus paid":"Bono pagado", "People you invited":"Personas que invitaste",
+  "No one yet. Share your link and they'll show up here once they apply.":"Nadie todavía. Comparte tu enlace y aparecerán aquí cuando presenten su solicitud.",
+  "Pending":"Pendiente", "Approved":"Aprobado", "Declined":"Rechazado", "Deactivated":"Desactivado",
+  "Your invite link unlocks once you're approved.":"Tu enlace de invitación se activa cuando seas aprobado.", "Link copied":"Enlace copiado", "Message copied, paste it anywhere":"Mensaje copiado, pégalo donde quieras",
+  "Apply once":"Solicita una vez", "Sign in with your email and tell us who you are. We review every partner.":"Inicia sesión con tu correo y cuéntanos quién eres. Revisamos a cada socio.",
+  "Send referrals":"Envía referidos", "Client's name, phone, address, and what they need. Make sure they know we'll call.":"Nombre, teléfono y dirección del cliente, y lo que necesita. Asegúrate de que sepa que lo llamaremos.",
+  "Track every step":"Sigue cada paso", "See when we contact your client, set the appointment, sign the contract, and install the job.":"Mira cuándo contactamos a tu cliente, programamos la cita, firmamos el contrato e instalamos el trabajo.",
+  "You get paid":"Te pagamos", "Once the job is installed, you earn the payout for that project type, by direct deposit through QuickBooks.":"Cuando el trabajo esté instalado, recibes el pago de ese tipo de proyecto por depósito directo a través de QuickBooks.",
+  "Invite others, earn more":"Invita a otros y gana más", "Payouts":"Pagos", "Who can join":"Quién puede participar", "Questions? Call":"¿Preguntas? Llama al", "Get started":"Comenzar",
+  "Save it to your home screen":"Guárdala en tu pantalla de inicio", "10 seconds":"10 segundos",
+  "Keep JNM Referrals one tap away, like an app. When you meet a homeowner who needs work, send it on the spot.":"Ten JNM Referidos a un toque, como una app. Cuando conozcas a un propietario que necesita trabajos, envíalo al momento.",
+  "Keep JNM Referrals one tap away, like an app. When you meet a homeowner who needs work, send it on the spot. The first time you open it from your home screen, you'll sign in once more with your email.":"Ten JNM Referidos a un toque, como una app. Cuando conozcas a un propietario que necesita trabajos, envíalo al momento. La primera vez que la abras desde tu pantalla de inicio, iniciarás sesión una vez más con tu correo.",
+  "Tap Share":"Toca Compartir", "At the bottom of Safari. If you don't see it, tap the page once.":"Abajo en Safari. Si no lo ves, toca la página una vez.", "At the top right of Safari.":"Arriba a la derecha en Safari.",
+  'Tap "Add to Home Screen"':'Toca "Agregar a inicio"', "Scroll down the share list to find it.":"Desliza hacia abajo en la lista para encontrarlo (también puede decir \"Añadir a pantalla de inicio\").",
+  "Tap Add":"Toca Agregar", "The RV icon lands on your home screen. One tap to send a referral.":"El ícono RV aparecerá en tu pantalla de inicio. Un toque para enviar un referido.",
+  "Tap the ⋮ menu":"Toca el menú ⋮", "At the top right of Chrome.":"Arriba a la derecha en Chrome.", 'Tap "Add to Home screen" or "Install app"':'Toca "Agregar a la pantalla principal" o "Instalar app"',
+  "Then confirm. The RV icon lands on your home screen.":"Luego confirma. El ícono RV aparecerá en tu pantalla de inicio.",
+  "Open this page in Safari first":"Primero abre esta página en Safari", "Open this page in Chrome first":"Primero abre esta página en Chrome",
+  'Tap the ••• or ⋮ menu at the top and choose "Open in Safari". Apps like Instagram and Facebook can\'t add it to your home screen.':'Toca el menú ••• o ⋮ arriba y elige "Abrir en Safari". Apps como Instagram y Facebook no pueden agregarla a tu pantalla de inicio.',
+  'Tap the ••• or ⋮ menu at the top and choose "Open in browser". Apps like Instagram and Facebook can\'t add it to your home screen.':'Toca el menú ••• o ⋮ arriba y elige "Abrir en el navegador". Apps como Instagram y Facebook no pueden agregarla a tu pantalla de inicio.',
+  "Add to home screen":"Agregar a la pantalla de inicio", "Later":"Más tarde", "I've added it":"Ya la agregué", "You're all set":"¡Listo!",
+  "Turn on notifications":"Activar notificaciones", "Not now":"Ahora no", "Notifications are on":"Notificaciones activadas", "Notifications are off. You'll still get email updates.":"Notificaciones desactivadas. Seguirás recibiendo actualizaciones por correo.",
+  "Get a notification on your phone when we contact your client, set the appointment, sign, install, and pay you.":"Recibe una notificación en tu teléfono cuando contactemos a tu cliente, programemos la cita, firmemos, instalemos y te paguemos.",
+  "Updates":"Novedades", "@Updates":"@Novedades", "Close":"Cerrar", "Updates on your referrals and payouts will show up here.":"Aquí aparecerán las novedades de tus referidos y pagos.", "Just now":"Ahora mismo",
+  "check your connection":"revisa tu conexión", "Sign in first":"Primero inicia sesión", "Client must agree to be contacted":"El cliente debe aceptar que lo contactemos",
+  "Client phone must be 10 digits":"El teléfono del cliente debe tener 10 dígitos", "Client name and address are required":"El nombre y la dirección del cliente son obligatorios",
+  "Unknown project type":"Tipo de proyecto desconocido", "Too many referrals in the last hour":"Demasiados referidos en la última hora", "Apply to the partner program first":"Primero solicita unirte al programa",
+  "Your partner account is not active":"Tu cuenta de socio no está activa", "Name and a 10-digit phone are required":"Se requieren el nombre y un teléfono de 10 dígitos",
+  "Choose an account type":"Elige un tipo de cuenta", "Brokerage is required for realtors":"La agencia es obligatoria para agentes de bienes raíces",
+  "That phone number is already on another partner account":"Ese número de teléfono ya está en otra cuenta de socio", "Your account can't send referrals right now":"Tu cuenta no puede enviar referidos en este momento"
+};
+const lower = s => s.charAt(0).toLowerCase() + s.slice(1);
+const trWord = w => ES[w] || w;
+const trLower = l => { const k = Object.keys(ES).find(k => k.toLowerCase() === l.toLowerCase()); return k ? lower(ES[k]) : l; };
+const ES_RX = [
+  [/^Still needed: (.+)\.$/, (m, a) => "Falta: " + a.split(", ").map(trWord).join(", ") + "."],
+  [/^Send us a homeowner who needs .+? When the job is installed, you earn (\$[\d,]+) to (\$[\d,]+), and you can follow every step along the way\.$/, (m, a, b) => `Envíanos un propietario que necesite una cocina, baño, ventanas, pisos, clósets o casi cualquier proyecto para su casa. Cuando el trabajo esté instalado, ganas de ${a} a ${b} y puedes seguir cada paso del proceso.`],
+  [/^We sent a code to (.+)\. Check spam if you don't see it in a minute\.$/, (m, e) => `Enviamos un código a ${e}. Si no lo ves en un minuto, revisa tu carpeta de spam.`],
+  [/^Couldn't send the code: (.+)$/, (m, e) => "No se pudo enviar el código: " + trWord(e)],
+  [/^Couldn't send: (.+?)\. Your info is still here, try again\.$/, (m, e) => `No se pudo enviar: ${trWord(e)}. Tu información sigue aquí, inténtalo de nuevo.`],
+  [/^Couldn't submit: (.+)$/, (m, e) => "No se pudo enviar la solicitud: " + trWord(e)],
+  [/^Couldn't load your account: (.+?)\. Check your connection and try again\.$/, (m, e) => `No se pudo cargar tu cuenta: ${e}. Revisa tu conexión e inténtalo de nuevo.`],
+  [/^Couldn't load updates: (.+)$/, (m, e) => "No se pudieron cargar las novedades: " + e],
+  [/^Couldn't turn on notifications: (.+)$/, (m, e) => "No se pudieron activar las notificaciones: " + e],
+  [/^Invited by (.+)$/, (m, n) => "Invitado por " + n],
+  [/^Signed in as (.+) · (\w+)$/, (m, n, t) => `Sesión iniciada como ${n} · ${trWord(t)}`],
+  [/^is yours when this (.+) is installed\. Track every step in My referrals\.$/, (m, l) => `es tuyo cuando se instale este trabajo (${trLower(l)}). Sigue cada paso en Mis referidos.`],
+  [/^(.+) · Sent (.+)$/, (m, l, d) => `${trWord(l)} · Enviado ${d}`],
+  [/^(.+) · Joined (.+)$/, (m, t, d) => `${trWord(t)} · Se unió ${d}`],
+  [/^(\d+) sent$/, (m, n) => `${n} enviado${n === "1" ? "" : "s"}`],
+  [/^(\d+) installed$/, (m, n) => `${n} instalado${n === "1" ? "" : "s"}`],
+  [/^you earn (\$[\d,]+)$/, (m, a) => `tú ganas ${a}`],
+  [/^After that, you'll earn a (\$[\d,]+) bonus every time someone you invite gets a job installed\.$/, (m, a) => `Después, ganarás un bono de ${a} cada vez que alguien que invites tenga un trabajo instalado.`],
+  [/^Approved partners get an invite link\. Earn (\$[\d,]+) for every installed job from people you invite\.$/, (m, a) => `Los socios aprobados reciben un enlace de invitación. Gana ${a} por cada trabajo instalado de las personas que invites.`],
+  [/^@Updates, (\d+) unread$/, (m, n) => `@Novedades, ${n} sin leer`],
+  [/^(\d+)m ago$/, (m, n) => `Hace ${n} min`], [/^(\d+)h ago$/, (m, n) => `Hace ${n} h`], [/^(\d+)d ago$/, (m, n) => `Hace ${n} d`]
+];
+function tr(str){
+  if (LANG !== "es" || !str) return str;
+  const core = str.trim(); if (!core) return str;
+  if (ES[core]) return str.replace(core, ES[core]);
+  for (const [rx, f] of ES_RX){ const m = core.match(rx); if (m) return str.replace(core, f(...m)); }
+  return str;
+}
+const skipTr = () => { if (location.hash.replace("#","") === "owner") return true; try { return bellRole === "owner" && !$("#feed").classList.contains("hidden"); } catch { return false; } };
+function trNode(node){
+  if (LANG !== "es" || skipTr()) return;
+  if (node.nodeType === 3){ const v = tr(node.nodeValue); if (v !== node.nodeValue) node.nodeValue = v; return; }
+  if (node.nodeType !== 1 || node.closest?.(".lang, .lang-top")) return;
+  const w = document.createTreeWalker(node, NodeFilter.SHOW_TEXT); const list = []; let n; while ((n = w.nextNode())) list.push(n);
+  list.forEach(t => { if (!t.parentElement?.closest(".lang, .lang-top")){ const v = tr(t.nodeValue); if (v !== t.nodeValue) t.nodeValue = v; } });
+  [node, ...node.querySelectorAll("[placeholder],[aria-label]")].forEach(el => ["placeholder","aria-label"].forEach(a => {
+    const v = el.getAttribute?.(a); if (!v) return; const t = tr("@" + v); if (t !== "@" + v) el.setAttribute(a, t.slice(1));
+  }));
+}
+new MutationObserver(ms => {
+  if (LANG !== "es" || skipTr()) return;
+  for (const m of ms){
+    if (m.type === "characterData") trNode(m.target);
+    else if (m.type === "attributes") trNode(m.target);
+    else m.addedNodes.forEach(trNode);
+  }
+}).observe(document.body, { subtree:true, childList:true, characterData:true, attributes:true, attributeFilter:["placeholder","aria-label"] });
+function setLang(l){
+  if (l !== "en" && l !== "es" || l === LANG) return;
+  store.set("jnm_lang", l);
+  Promise.resolve(state.me ? api.setLang(l) : null).finally(() => location.reload());
+}
+trNode(document.body);
+document.addEventListener("click", e => { const b = e.target.closest("[data-lang]"); if (b) setLang(b.dataset.lang); });
+
 /* ---------- add-to-home-screen walkthrough ---------- */
 const UA = navigator.userAgent || "";
 const IS_IOS = /iPhone|iPad|iPod/.test(UA) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
@@ -603,7 +747,8 @@ async function openFeed(){
 }
 function closeFeed(){ $("#feed").classList.add("hidden"); document.body.style.overflow = ""; }
 const demoBanner = msg => !LIVE ? `<div class="demo">${msg}</div>` : "";
-const footer = () => `<div class="foot"><button class="linkbtn" onclick="go('owner')">Owner login</button></div>`;
+const langBar = () => `<div class="lang"><button data-lang="en" aria-pressed="${LANG==="en"}">English</button><span>·</span><button data-lang="es" aria-pressed="${LANG==="es"}">Español</button></div>`;
+const footer = () => `${langBar()}<div class="foot"><button class="linkbtn" onclick="go('owner')">Owner login</button></div>`;
 
 /* ============================================================
    SIGN IN (email code) — partners and owner
@@ -614,9 +759,9 @@ function viewSignIn(role, presetEmail){
   const app = clearApp();
   app.innerHTML = `
     ${demoBanner(`Demo mode: use any email, and the code is ${DEMO_CODE}.`)}
-    ${owner ? "" : `<section class="sec"><div class="sec-b intro">
+    ${owner ? "" : `<section class="sec"><div class="sec-b intro"><button class="lang-top" data-lang="${LANG==="es" ? "en" : "es"}">${LANG==="es" ? "English" : "Español"}</button>
         <h1>Know someone who needs work done? Get paid for it.</h1>
-        <p class="muted">Send us a homeowner who needs a kitchen, bath, impact windows, a driveway, or more. When the job is installed, you earn ${money(minTier())} to ${money(maxTier())}, and you can follow every step along the way.</p>
+        <p class="muted">Send us a homeowner who needs a kitchen, bath, windows, floors, closets or just about any home project. When the job is installed, you earn ${money(minTier())} to ${money(maxTier())}, and you can follow every step along the way.</p>
       </div></section>${showHomeTip()}`}
     <section class="sec">
       <div class="sec-h"><span><span class="n">1</span>${owner ? "Owner sign in" : "Sign in or apply"}</span><span class="aside">No password needed</span></div>
@@ -721,7 +866,7 @@ function viewApply(email){
     const b = $("#aGo"); b.disabled = true; b.textContent = "Submitting…";
     const p = { name:$("#aName").value.trim(), phone:$("#aPhone").value, type, brokerage:type==="Realtor" ? $("#aBrok").value.trim() : "", company:type==="Contractor" ? $("#aComp").value.trim() : "", ref: store.get("jnm_ref", "") || "" };
     try {
-      await api.apply(p);
+      await api.apply(p); api.setLang(LANG);
       notifyOwner({ _subject:`New partner application: ${p.name} (${p.type})`, name:p.name, phone:fmtPhone(p.phone), email, type:p.type, brokerage:p.brokerage, company:p.company, review_at:appLink() + "#owner" });
       toast("Application submitted"); render();
     } catch(e){ const n = $("#need"); n.className = "need err"; n.textContent = "Couldn't submit: " + e.message; b.disabled = false; b.textContent = "Submit application"; }
@@ -871,7 +1016,7 @@ async function viewMine(){
         </div>`).join("")
       : `<div class="empty">No referrals yet. Your first one takes about 30 seconds.</div>`}
     </section>
-    <button class="btn" onclick="go('refer')">Send a referral</button>`;
+    <button class="btn" onclick="go('refer')">Send a referral</button>${langBar()}`;
   wireNotif("partner");
   const now = Object.fromEntries(rows.map(r => [r.id, lastUpdate(r)])); store.set(seenKey(), now); setUnseen(0);
 }
@@ -914,8 +1059,9 @@ async function viewInvite(){
           <div style="text-align:right"><span class="badge ps-${r.status}">${PSTATUS[r.status]}</span><div class="small" style="margin-top:6px">${r.jobs_installed} installed</div></div></div></div>`).join("")
       : `<div class="empty">No one yet. Share your link and they'll show up here once they apply.</div>`}
     </section>
-    ${payoutNote(recs.some(r => +r.jobs_installed > 0))}`;
-  const msg = `I've been sending referrals to JNM Renovation & Construction and getting paid for every job they install. You can join too, it takes a minute: ${link}`;
+    ${payoutNote(recs.some(r => +r.jobs_installed > 0))}${langBar()}`;
+  const msg = LANG === "es" ? `He estado enviando referidos a JNM Renovation & Construction y me pagan por cada trabajo que instalan. Tú también puedes unirte, toma un minuto: ${link}`
+    : `I've been sending referrals to JNM Renovation & Construction and getting paid for every job they install. You can join too, it takes a minute: ${link}`;
   $("#copy").onclick = async () => { try { await navigator.clipboard.writeText(link); toast("Link copied"); } catch { $("#invLink").select(); } };
   $("#share").onclick = async () => { if (navigator.share) { try { await navigator.share({ title:"JNM Referral Program", text:msg, url:link }); } catch(e){} } else { try { await navigator.clipboard.writeText(msg); toast("Message copied, paste it anywhere"); } catch { $("#invLink").select(); } } };
 }
@@ -946,7 +1092,7 @@ function viewHow(){
     </section>
     <div class="need" style="margin-top:18px">${esc(CONFIG.PAYOUT_TERMS)}</div>
     ${CONFIG.COMPANY_PHONE ? `<p class="small muted" style="text-align:center;margin-top:18px">Questions? Call <a href="tel:${digits(CONFIG.COMPANY_PHONE)}">${esc(CONFIG.COMPANY_PHONE)}</a></p>` : ""}
-    <button class="btn" onclick="go('refer')">Get started</button>`;
+    <button class="btn" onclick="go('refer')">Get started</button>${langBar()}`;
 }
 
 /* ============================================================
@@ -1050,7 +1196,7 @@ function ownerReferrals(refs, ps){
             <dt>Phone</dt><dd><a href="tel:${digits(r.client_phone)}">${esc(fmtPhone(r.client_phone))}</a></dd>
             <dt>Address</dt><dd><a href="https://maps.google.com/?q=${encodeURIComponent(r.client_address)}" target="_blank" rel="noopener">${esc(r.client_address)}</a></dd>
             ${r.notes ? `<dt>Notes</dt><dd>${esc(r.notes)}</dd>` : ""}
-            <dt>From</dt><dd>${esc(p.name)} · ${esc(p.partner_type)}${p.brokerage ? " · " + esc(p.brokerage) : ""}${p.company ? " · " + esc(p.company) : ""}${partnerBadge(p.status)}<br><a href="tel:${digits(p.phone)}">${esc(fmtPhone(p.phone))}</a>${p.email ? ` · <a href="mailto:${esc(p.email)}">${esc(p.email)}</a>` : ""}</dd>
+            <dt>From</dt><dd>${esc(p.name)} · ${esc(p.partner_type)}${p.lang === "es" ? " · Spanish" : ""}${p.brokerage ? " · " + esc(p.brokerage) : ""}${p.company ? " · " + esc(p.company) : ""}${partnerBadge(p.status)}<br><a href="tel:${digits(p.phone)}">${esc(fmtPhone(p.phone))}</a>${p.email ? ` · <a href="mailto:${esc(p.email)}">${esc(p.email)}</a>` : ""}</dd>
           </dl>
           ${STAMPS.some(k => r[k]) ? `<div class="small muted" style="margin-top:8px">${STAMPS.filter(k => r[k]).map(k => `${(STATUSES.find(s => s.key === k.replace("_at","")) || {}).label} ${shortDate(r[k])}`).join(" · ")}</div>` : ""}
           <div class="status-row">${STATUSES.map(s => `<button data-s="${s.key}" aria-pressed="${r.status===s.key}">${s.label}</button>`).join("")}</div>
@@ -1093,10 +1239,21 @@ function updateRow(r){
     paid: `your ${money(r.payout)} payout for ${client} has been sent. Thank you!`,
     dead: `${client} decided not to move forward right now. Thanks for the referral, and keep them coming.`
   }[r.status];
-  const msg = `Hi ${first}, update on your JNM referral: ${line} Track it anytime at ${appLink()}`;
+  const es = p.lang === "es";
+  const lineEs = {
+    new: `recibimos tu referido de ${client}.`,
+    contacted: `ya contactamos a ${client}.`,
+    appointment: `tenemos una cita programada con ${client}.`,
+    signed: `¡${client} firmó el contrato! Tu pago de ${money(r.payout)} se envía cuando se instale el trabajo.`,
+    installed: `el trabajo de ${client} ya está instalado. Tu pago de ${money(r.payout)} está en camino.` + ((p.payout_status || "not_invited") !== "ready" ? ` Pronto te llegará un correo de QuickBooks para configurar el depósito directo.` : ""),
+    paid: `tu pago de ${money(r.payout)} por ${client} ya fue enviado. ¡Gracias!`,
+    dead: `${client} decidió no continuar por ahora. Gracias por el referido, ¡sigue enviándonos más!`
+  }[r.status];
+  const msg = es ? `Hola ${first}, novedades de tu referido en JNM: ${lineEs} Síguelo en cualquier momento en ${appLink()}`
+    : `Hi ${first}, update on your JNM referral: ${line} Track it anytime at ${appLink()}`;
   return `<div class="need ok" style="margin-top:12px"><div class="small muted" style="margin-bottom:6px">${esc(first)} gets this update by email automatically, plus a phone notification if they turned them on. Want to add a personal text?</div>
     <div class="small muted" style="margin-top:6px">${esc(msg)}</div>
-    <div style="display:flex;gap:16px;margin-top:8px"><a href="sms:${digits(p.phone)}?&body=${encodeURIComponent(msg)}">Text them</a>${p.email ? `<a href="mailto:${esc(p.email)}?subject=${encodeURIComponent("Update on your JNM referral")}&body=${encodeURIComponent(msg)}">Email them</a>` : ""}<button class="linkbtn" onclick="state.justUpdated=null;this.closest('.need').remove()">Skip</button></div></div>`;
+    <div style="display:flex;gap:16px;margin-top:8px"><a href="sms:${digits(p.phone)}?&body=${encodeURIComponent(msg)}">Text them</a>${p.email ? `<a href="mailto:${esc(p.email)}?subject=${encodeURIComponent(es ? "Novedades de tu referido JNM" : "Update on your JNM referral")}&body=${encodeURIComponent(msg)}">Email them</a>` : ""}<button class="linkbtn" onclick="state.justUpdated=null;this.closest('.need').remove()">Skip</button></div></div>`;
 }
 
 function ownerPartners(ps, refs){
@@ -1122,6 +1279,7 @@ function ownerPartners(ps, refs){
             <dt>Email</dt><dd><a href="mailto:${esc(p.email)}">${esc(p.email)}</a></dd>
             <dt>Applied</dt><dd>${fmtDate(p.created_at)}</dd>
             <dt>Referrals</dt><dd>${rs.length} sent${owed ? ` · <span style="color:var(--warn)">${money(owed)} owed</span>` : ""}${pd ? ` · ${money(pd)} paid` : ""}</dd>
+            ${p.lang === "es" ? `<dt>Language</dt><dd>Spanish</dd>` : ""}
             ${rec ? `<dt>Recruited by</dt><dd>${esc(rec.name)}</dd>` : ""}
             ${recruits ? `<dt>Recruits</dt><dd>${recruits} partner${recruits > 1 ? "s" : ""}</dd>` : ""}
           </dl>
@@ -1159,9 +1317,12 @@ function ownerPartners(ps, refs){
 }
 function notifyRow(p){
   const first = (p.name || "").split(" ")[0];
-  const msg = `Hi ${first}, you're approved as a JNM Referral Partner! Send referrals anytime at ${appLink()} and track every step there. When your first referral is installed, we'll send you a quick QuickBooks setup for direct deposit. Want to earn more? Check the Invite & earn tab for your personal link. Thank you, JNM Renovation & Construction`;
+  const es = p.lang === "es";
+  const msgEs = `Hola ${first}, ¡fuiste aprobado como Socio de Referidos de JNM! Envía referidos en cualquier momento en ${appLink()} y sigue cada paso ahí. Cuando tu primer referido esté instalado, te enviaremos una configuración rápida de QuickBooks para el depósito directo. ¿Quieres ganar más? Revisa la pestaña Invita y gana para tu enlace personal. Gracias, JNM Renovation & Construction`;
+  const msgEn = `Hi ${first}, you're approved as a JNM Referral Partner! Send referrals anytime at ${appLink()} and track every step there. When your first referral is installed, we'll send you a quick QuickBooks setup for direct deposit. Want to earn more? Check the Invite & earn tab for your personal link. Thank you, JNM Renovation & Construction`;
+  const msg = es ? msgEs : msgEn;
   return `<div class="need ok" style="margin-top:12px"><div class="small muted" style="margin-bottom:6px">${esc(first)} gets an approval email automatically. Want to add a personal text?</div>
-    <div style="display:flex;gap:16px;margin-top:8px"><a href="sms:${digits(p.phone)}?&body=${encodeURIComponent(msg)}">Text them</a><a href="mailto:${esc(p.email)}?subject=${encodeURIComponent("You're approved: JNM Referral Partner")}&body=${encodeURIComponent(msg)}">Email them</a></div></div>`;
+    <div style="display:flex;gap:16px;margin-top:8px"><a href="sms:${digits(p.phone)}?&body=${encodeURIComponent(msg)}">Text them</a><a href="mailto:${esc(p.email)}?subject=${encodeURIComponent(es ? "Ya estás aprobado: Socio de Referidos JNM" : "You're approved: JNM Referral Partner")}&body=${encodeURIComponent(msg)}">Email them</a></div></div>`;
 }
 
 function ownerPayouts(){
