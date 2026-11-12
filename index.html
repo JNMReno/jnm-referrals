@@ -315,7 +315,10 @@ const store = {
   set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
 };
 function toast(msg){ const t = $("#toast"); t.textContent = msg; t.classList.remove("hidden"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.add("hidden"), 2600); }
-function liveFormat(input){ if (!input) return; input.addEventListener("input", () => { const d = digits(input.value).slice(0,10); let o = d; if (d.length > 6) o = `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`; else if (d.length > 3) o = `(${d.slice(0,3)}) ${d.slice(3)}`; input.value = o; }); }
+// US phone: drop a leading country code 1 (typed or autofilled +1) and keep 10 digits
+function normPhone(v){ let d = digits(v).slice(0, 11); if (d.length === 11 && d[0] === "1") d = d.slice(1); return d.slice(0, 10); }
+const validPhone = v => /^[2-9]\d{2}[2-9]\d{6}$/.test(normPhone(v));
+function liveFormat(input){ if (!input) return; input.addEventListener("input", () => { const raw = digits(input.value); const d = raw.length > 10 ? normPhone(raw) : raw.slice(0,10); let o = d; if (d.length > 6) o = `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`; else if (d.length > 3) o = `(${d.slice(0,3)}) ${d.slice(3)}`; input.value = o; }); }
 function clearApp(){ const a = $("#app"); a.oninput = null; a.onchange = null; return a; }
 
 /* ============================================================
@@ -855,7 +858,7 @@ function viewApply(email){
     $("#fBrok").classList.toggle("hidden", type !== "Realtor"); $("#fComp").classList.toggle("hidden", type !== "Contractor"); check(); };
   const missing = () => { const m = [];
     if ($("#aName").value.trim().length < 2) m.push("Full name");
-    if (digits($("#aPhone").value).length !== 10) m.push("Phone");
+    if (!validPhone($("#aPhone").value)) m.push("Phone");
     if (!type) m.push("I am a");
     if (type === "Realtor" && $("#aBrok").value.trim().length < 2) m.push("Brokerage");
     if (!$("#aTerms").checked) m.push("Agree to terms");
@@ -937,7 +940,7 @@ function viewRefer(){
   const missing = () => { const m = [];
     if (!state.project) m.push("Project type");
     if ($("#cName").value.trim().length < 2) m.push("Client name");
-    if (digits($("#cPhone").value).length !== 10) m.push("Client phone");
+    if (!validPhone($("#cPhone").value)) m.push("Client phone");
     if ($("#cAddr").value.trim().length < 6) m.push("Address");
     if (!$("#cConsent").checked) m.push("Client OK to contact");
     return m; };
