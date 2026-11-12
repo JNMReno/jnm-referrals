@@ -224,6 +224,10 @@ input.in.code{ font-size:24px; letter-spacing:.4em; text-align:center; font-weig
 .intro h1{ padding-right:84px; }
 select.in{ appearance:none; -webkit-appearance:none; background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%); background-position:calc(100% - 18px) 55%,calc(100% - 12px) 55%; background-size:6px 6px; background-repeat:no-repeat; padding-right:34px; }
 input.in[readonly]{ color:var(--muted); }
+.hist{ margin-top:6px; font-size:12.5px; }
+.hist summary{ cursor:pointer; color:var(--cyan); }
+.hist-e{ border-left:2px solid var(--line); padding:6px 0 6px 10px; margin-top:8px; overflow-wrap:anywhere; }
+.hist-e b{ font-weight:600; }
 </style>
 </head>
 <body>
@@ -404,12 +408,20 @@ const api = {
   async updateProfile(v){
     if (!LIVE){ const db = demoDB.load(); const e = store.get(demoSess("partner"), null); const p = db.partners.find(x => x.email === e);
       if (db.partners.some(x => x.phone === normPhone(v.phone) && x.id !== p.id)) throw new Error("That phone number is already on another partner account");
-      Object.assign(p, { name:v.name, phone:normPhone(v.phone), partner_type:v.type, brokerage:v.brokerage, company:v.company }); demoDB.save(db); return; }
+      const nv = { name:v.name, phone:normPhone(v.phone), partner_type:v.type, brokerage:v.brokerage || null, company:v.company || null }; const ch = {};
+      Object.keys(nv).forEach(k => { if ((p[k] || null) !== (nv[k] || null)) ch[k] = [p[k] || null, nv[k] || null]; });
+      if (Object.keys(ch).length){ if (ch.phone) p.prev_phone = p.phone; p.profile_updated_at = new Date().toISOString(); p.edit_log = [...(p.edit_log || []), { at:p.profile_updated_at, by:"partner", changes:ch }]; Object.assign(p, nv); }
+      demoDB.save(db); return; }
     await rpc("update_my_profile", { p_name:v.name, p_phone:normPhone(v.phone), p_type:v.type, p_brokerage:v.brokerage || "", p_company:v.company || "" });
   },
   async updateMyReferral(id, v){
     if (!LIVE){ const db = demoDB.load(); const r = db.referrals.find(x => x.id === id); if (r.status !== "new") throw new Error("This referral is already in progress. Contact JNM to make changes.");
-      const t = db.tiers.find(x => x.key === v.project); Object.assign(r, { client_name:v.name, client_phone:normPhone(v.phone), client_address:v.address, notes:v.notes, project_type:v.project, payout:t.amount }); demoDB.save(db); return; }
+      const t = db.tiers.find(x => x.key === v.project); const nv = { client_name:v.name, client_phone:normPhone(v.phone), client_address:v.address, notes:v.notes || null, project_type:v.project }; const ch = {};
+      const nm = { client_name:"name", client_phone:"phone", client_address:"address", notes:"notes", project_type:"project" };
+      Object.keys(nv).forEach(k => { if ((r[k] || null) !== (nv[k] || null)) ch[nm[k]] = [r[k] || null, nv[k] || null]; });
+      if (Object.keys(ch).length){ r.edited_at = new Date().toISOString(); r.edit_log = [...(r.edit_log || []), { at:r.edited_at, by:"partner", changes:ch }]; Object.assign(r, nv, { payout:t.amount });
+        db.notes = db.notes || []; db.notes.unshift({ id:crypto.randomUUID(), to:"__owner", title:"A partner updated a referral", body:`${v.name}: ${Object.keys(ch).join(", ")} changed`, path:"#owner", created_at:r.edited_at, read_at:null }); }
+      demoDB.save(db); return; }
     await rpc("update_my_referral", { p_id:id, p_client_name:v.name, p_client_phone:normPhone(v.phone), p_client_address:v.address, p_notes:v.notes || "", p_project:v.project });
   },
   async setLang(l){ if (!LIVE) return; try { await rpc("set_my_lang", { p_lang:l }); } catch(e){ console.warn("lang", e); } },
@@ -759,6 +771,14 @@ function wireNotif(role){
     } catch(e){ console.error(e); b.disabled = false; b.textContent = "Turn on notifications"; toast("Couldn't turn on notifications: " + e.message); }
   };
 }
+/* ---------- change history (owner view) ---------- */
+const FIELD_LABEL = { name:"Name", phone:"Phone", address:"Address", notes:"Notes", project:"Project type", partner_type:"Account type", brokerage:"Brokerage", company:"Company" };
+function fmtVal(k, v){ if (v == null || v === "") return "(blank)"; if (k === "phone") return fmtPhone(v); if (k === "project") return (state.tiers.find(t => t.key === v) || {}).label || v; return v; }
+function historyBlock(log, label){
+  if (!log || !log.length) return "";
+  return `<details class="hist"><summary>${label}</summary>${log.slice().reverse().map(e => `<div class="hist-e"><div class="muted">${fmtDate(e.at)}</div>${Object.entries(e.changes || {}).map(([k, [a, b]]) => `<div><b>${esc(FIELD_LABEL[k] || k)}:</b> <span class="muted" style="text-decoration:line-through">${esc(fmtVal(k, a))}</span> → ${esc(fmtVal(k, b))}</div>`).join("")}</div>`).join("")}</details>`;
+}
+
 /* ---------- edit sheet (owner + partner) ---------- */
 function friendlyErr(e){ const m = String(e?.message || e || ""); if (/partners_phone_key|duplicate key/i.test(m)) return "That phone number is already on another partner account"; return m || "check your connection"; }
 function closeEdit(){ $("#edit").classList.add("hidden"); document.body.style.overflow = ""; }
@@ -1327,6 +1347,7 @@ function ownerReferrals(refs, ps){
             <dt>From</dt><dd>${esc(p.name)} · ${esc(p.partner_type)}${p.lang === "es" ? " · Spanish" : ""}${p.brokerage ? " · " + esc(p.brokerage) : ""}${p.company ? " · " + esc(p.company) : ""}${partnerBadge(p.status)}<br><a href="tel:${digits(p.phone)}">${esc(fmtPhone(p.phone))}</a>${p.email ? ` · <a href="mailto:${esc(p.email)}">${esc(p.email)}</a>` : ""}</dd>
           </dl>
           ${STAMPS.some(k => r[k]) ? `<div class="small muted" style="margin-top:8px">${STAMPS.filter(k => r[k]).map(k => `${(STATUSES.find(s => s.key === k.replace("_at","")) || {}).label} ${shortDate(r[k])}`).join(" · ")}</div>` : ""}
+          ${r.edited_at ? `<div class="small" style="margin-top:8px;color:var(--warn)">Edited by partner · ${fmtDate(r.edited_at)}</div>${historyBlock(r.edit_log, "See what changed")}` : ""}
           <button class="linkbtn" data-edit-ref style="margin-top:10px;font-size:13px">Edit details</button>
           <div class="status-row">${STATUSES.map(s => `<button data-s="${s.key}" aria-pressed="${r.status===s.key}">${s.label}</button>`).join("")}</div>
           <div class="pay-row"><span class="l" style="margin:0">Payout $</span><input class="in" type="number" inputmode="numeric" min="0" step="25" value="${+r.payout}" data-pay>${r.paid_at ? `<span class="small muted">Paid ${fmtDate(r.paid_at)}</span>` : ""}</div>
@@ -1408,6 +1429,7 @@ function ownerPartners(ps, refs){
             <dt>Phone</dt><dd><a href="tel:${digits(p.phone)}">${esc(fmtPhone(p.phone))}</a></dd>
             <dt>Email</dt><dd><a href="mailto:${esc(p.email)}">${esc(p.email)}</a></dd>
             <dt>Applied</dt><dd>${fmtDate(p.created_at)}</dd>
+            ${p.prev_phone ? `<dt>Prev. phone</dt><dd class="muted">${esc(fmtPhone(p.prev_phone))}</dd>` : ""}
             <dt>Referrals</dt><dd>${rs.length} sent${owed ? ` · <span style="color:var(--warn)">${money(owed)} owed</span>` : ""}${pd ? ` · ${money(pd)} paid` : ""}</dd>
             ${p.lang === "es" ? `<dt>Language</dt><dd>Spanish</dd>` : ""}
             ${rec ? `<dt>Recruited by</dt><dd>${esc(rec.name)}</dd>` : ""}
@@ -1416,6 +1438,7 @@ function ownerPartners(ps, refs){
           ${p.status === "approved" && (needsSetup(p, refs) || (p.payout_status || "not_invited") !== "not_invited") ? `<span class="l" style="margin:14px 0 6px">Payout setup · QuickBooks</span>
           <div class="ps-row">${Object.entries(PAYOUT_SETUP).map(([k,v]) => `<button data-ps="${k}" aria-pressed="${(p.payout_status || "not_invited") === k}">${v}</button>`).join("")}</div>
           <button class="linkbtn" data-qb style="margin-top:10px;font-size:12.5px">Copy info for QuickBooks</button>` : p.status === "approved" ? `<div class="small muted" style="margin-top:12px">QuickBooks setup: after their first installed job</div>` : ""}
+          ${p.profile_updated_at ? `<div class="small muted" style="margin-top:10px">Info updated ${fmtDate(p.profile_updated_at)}</div>${historyBlock(p.edit_log, "See what changed")}` : ""}
           <button class="linkbtn" data-edit-p style="margin-top:12px;font-size:13px">Edit details</button>
           <div class="act-row">
             ${p.status === "pending" ? `<button class="btn sm" data-act="approved">Approve</button><button class="btn sm ghost" data-act="declined">Decline</button>` : ""}
