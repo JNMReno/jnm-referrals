@@ -5,7 +5,7 @@ self.addEventListener("push", (e) => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch { d = { body: e.data ? e.data.text() : "" }; }
   e.waitUntil(self.registration.showNotification(d.title || "JNM Referrals", {
-    body: d.body || "", icon: "icon-192.png", badge: "icon-192.png", tag: d.tag, data: { url: d.url || "./" }
+    body: d.body || "", icon: "icon-192-v2.png", badge: "icon-192-v2.png", tag: d.tag, data: { url: d.url || "./" }
   }));
 });
 self.addEventListener("notificationclick", (e) => {
