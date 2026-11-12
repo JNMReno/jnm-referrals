@@ -222,6 +222,8 @@ input.in.code{ font-size:24px; letter-spacing:.4em; text-align:center; font-weig
 .intro{ position:relative; }
 .lang-top{ position:absolute; top:12px; right:12px; background:var(--field); border:1px solid var(--line); color:var(--cyan); border-radius:14px; padding:5px 12px; font:inherit; font-size:12px; font-weight:600; cursor:pointer; }
 .intro h1{ padding-right:84px; }
+select.in{ appearance:none; -webkit-appearance:none; background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%); background-position:calc(100% - 18px) 55%,calc(100% - 12px) 55%; background-size:6px 6px; background-repeat:no-repeat; padding-right:34px; }
+input.in[readonly]{ color:var(--muted); }
 </style>
 </head>
 <body>
@@ -241,6 +243,12 @@ input.in.code{ font-size:24px; letter-spacing:.4em; text-align:center; font-weig
 
 <main class="wrap" id="app"></main>
 <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+<div id="edit" class="feed hidden" role="dialog" aria-modal="true" aria-labelledby="editTitle">
+  <div class="feed-in">
+    <div class="feed-h"><span id="editTitle">Edit</span><button class="linkbtn" id="editClose">Close</button></div>
+    <div class="sec-b" id="editBody"></div>
+  </div>
+</div>
 <div id="feed" class="feed hidden" role="dialog" aria-modal="true" aria-label="Updates">
   <div class="feed-in">
     <div class="feed-h"><span>Updates</span><button class="linkbtn" id="feedClose">Close</button></div>
@@ -388,11 +396,22 @@ const api = {
   async myReferrals(){
     if (!LIVE){
       const db = demoDB.load(); const e = store.get(demoSess("partner"), null); const p = db.partners.find(x => x.email === e); if (!p) return [];
-      return db.referrals.filter(r => r.partner_id === p.id).map(r => ({ id:r.id, client_name:r.client_name, project_label:(db.tiers.find(t=>t.key===r.project_type)||{}).label, status:r.status, payout:r.payout, created_at:r.created_at, ...Object.fromEntries(STAMPS.map(k => [k, r[k] || null])) }));
+      return db.referrals.filter(r => r.partner_id === p.id).map(r => ({ id:r.id, client_name:r.client_name, client_phone:r.client_phone, client_address:r.client_address, notes:r.notes, project_type:r.project_type, project_label:(db.tiers.find(t=>t.key===r.project_type)||{}).label, status:r.status, payout:r.payout, created_at:r.created_at, ...Object.fromEntries(STAMPS.map(k => [k, r[k] || null])) }));
     }
     return rpc("my_referrals");
   },
 
+  async updateProfile(v){
+    if (!LIVE){ const db = demoDB.load(); const e = store.get(demoSess("partner"), null); const p = db.partners.find(x => x.email === e);
+      if (db.partners.some(x => x.phone === normPhone(v.phone) && x.id !== p.id)) throw new Error("That phone number is already on another partner account");
+      Object.assign(p, { name:v.name, phone:normPhone(v.phone), partner_type:v.type, brokerage:v.brokerage, company:v.company }); demoDB.save(db); return; }
+    await rpc("update_my_profile", { p_name:v.name, p_phone:normPhone(v.phone), p_type:v.type, p_brokerage:v.brokerage || "", p_company:v.company || "" });
+  },
+  async updateMyReferral(id, v){
+    if (!LIVE){ const db = demoDB.load(); const r = db.referrals.find(x => x.id === id); if (r.status !== "new") throw new Error("This referral is already in progress. Contact JNM to make changes.");
+      const t = db.tiers.find(x => x.key === v.project); Object.assign(r, { client_name:v.name, client_phone:normPhone(v.phone), client_address:v.address, notes:v.notes, project_type:v.project, payout:t.amount }); demoDB.save(db); return; }
+    await rpc("update_my_referral", { p_id:id, p_client_name:v.name, p_client_phone:normPhone(v.phone), p_client_address:v.address, p_notes:v.notes || "", p_project:v.project });
+  },
   async setLang(l){ if (!LIVE) return; try { await rpc("set_my_lang", { p_lang:l }); } catch(e){ console.warn("lang", e); } },
   async recruiterName(code){
     if (!code) return null;
@@ -593,7 +612,16 @@ const ES = {
   "Unknown project type":"Tipo de proyecto desconocido", "Too many referrals in the last hour":"Demasiados referidos en la última hora", "Apply to the partner program first":"Primero solicita unirte al programa",
   "Your partner account is not active":"Tu cuenta de socio no está activa", "Name and a 10-digit phone are required":"Se requieren el nombre y un teléfono de 10 dígitos",
   "Choose an account type":"Elige un tipo de cuenta", "Brokerage is required for realtors":"La agencia es obligatoria para agentes de bienes raíces",
-  "That phone number is already on another partner account":"Ese número de teléfono ya está en otra cuenta de socio", "Your account can't send referrals right now":"Tu cuenta no puede enviar referidos en este momento"
+  "That phone number is already on another partner account":"Ese número de teléfono ya está en otra cuenta de socio",
+  "Edit my info":"Editar mis datos", "Edit details":"Editar datos", "Edit referral":"Editar referido", "Save changes":"Guardar cambios", "Saving…":"Guardando…", "Changes saved":"Cambios guardados",
+  "You can change these details until our team contacts your client.":"Puedes cambiar estos datos hasta que nuestro equipo contacte a tu cliente.",
+  "To change your sign-in email, contact JNM.":"Para cambiar tu correo de acceso, comunícate con JNM.",
+  "Need to fix a referral that's already in progress? Contact JNM at":"¿Necesitas corregir un referido que ya está en proceso? Comunícate con JNM al",
+  "Need to fix a referral that's already in progress? Contact JNM.":"¿Necesitas corregir un referido que ya está en proceso? Comunícate con JNM.",
+  "Enter a full name.":"Ingresa un nombre completo.", "Enter a valid 10-digit phone number.":"Ingresa un número de teléfono válido de 10 dígitos.",
+  "Enter the client's name.":"Ingresa el nombre del cliente.", "Enter the project address.":"Ingresa la dirección del proyecto.",
+  "This referral is already in progress. Contact JNM to make changes.":"Este referido ya está en proceso. Comunícate con JNM para hacer cambios.",
+  "Referral not found":"Referido no encontrado", "Name and a valid 10-digit phone are required":"Se requieren el nombre y un teléfono válido de 10 dígitos", "Your account can't send referrals right now":"Tu cuenta no puede enviar referidos en este momento"
 };
 const lower = s => s.charAt(0).toLowerCase() + s.slice(1);
 const trWord = w => ES[w] || w;
@@ -604,6 +632,7 @@ const ES_RX = [
   [/^We sent a code to (.+)\. Check spam if you don't see it in a minute\.$/, (m, e) => `Enviamos un código a ${e}. Si no lo ves en un minuto, revisa tu carpeta de spam.`],
   [/^Couldn't send the code: (.+)$/, (m, e) => "No se pudo enviar el código: " + trWord(e)],
   [/^Couldn't send: (.+?)\. Your info is still here, try again\.$/, (m, e) => `No se pudo enviar: ${trWord(e)}. Tu información sigue aquí, inténtalo de nuevo.`],
+  [/^Couldn't save: (.+)$/, (m, e) => "No se pudo guardar: " + trWord(e)],
   [/^Couldn't submit: (.+)$/, (m, e) => "No se pudo enviar la solicitud: " + trWord(e)],
   [/^Couldn't load your account: (.+?)\. Check your connection and try again\.$/, (m, e) => `No se pudo cargar tu cuenta: ${e}. Revisa tu conexión e inténtalo de nuevo.`],
   [/^Couldn't load updates: (.+)$/, (m, e) => "No se pudieron cargar las novedades: " + e],
@@ -730,6 +759,96 @@ function wireNotif(role){
     } catch(e){ console.error(e); b.disabled = false; b.textContent = "Turn on notifications"; toast("Couldn't turn on notifications: " + e.message); }
   };
 }
+/* ---------- edit sheet (owner + partner) ---------- */
+function friendlyErr(e){ const m = String(e?.message || e || ""); if (/partners_phone_key|duplicate key/i.test(m)) return "That phone number is already on another partner account"; return m || "check your connection"; }
+function closeEdit(){ $("#edit").classList.add("hidden"); document.body.style.overflow = ""; }
+function openEdit(cfg){
+  $("#editTitle").textContent = cfg.title;
+  const body = $("#editBody");
+  body.innerHTML = (cfg.intro ? `<p class="small muted" style="margin:0 0 14px">${esc(cfg.intro)}</p>` : "") + cfg.fields.map(f => `<div class="field${f.hide ? " hidden" : ""}" data-fk="${f.key}"><label class="l" for="ef_${f.key}">${esc(f.label)}</label>${
+      f.type === "select" ? `<select class="in" id="ef_${f.key}">${f.options.map(o => `<option value="${esc(o.value)}"${o.value === f.value ? " selected" : ""}>${esc(o.label)}</option>`).join("")}</select>`
+      : f.type === "textarea" ? `<textarea class="in" id="ef_${f.key}">${esc(f.value || "")}</textarea>`
+      : `<input class="in" id="ef_${f.key}" type="${f.type === "tel" ? "tel" : f.type === "email" ? "email" : "text"}"${f.type === "tel" ? ' inputmode="tel"' : ""}${f.readonly ? " readonly" : ""} value="${esc(f.type === "tel" ? fmtPhone(f.value || "") : (f.value || ""))}">`
+    }${f.hint ? `<div class="small muted" style="margin-top:6px">${esc(f.hint)}</div>` : ""}</div>`).join("")
+    + `<div class="need err hidden" id="editErr"></div><button class="btn" id="editSave">Save changes</button>`;
+  cfg.fields.filter(f => f.type === "tel").forEach(f => liveFormat($("#ef_" + f.key)));
+  body.oninput = () => $("#editErr").classList.add("hidden");
+  const vals = () => Object.fromEntries(cfg.fields.map(f => [f.key, ($("#ef_" + f.key).value || "").trim()]));
+  if (cfg.onChange){ body.onchange = () => cfg.onChange(vals(), body); cfg.onChange(vals(), body); } else body.onchange = null;
+  $("#edit").classList.remove("hidden"); document.body.style.overflow = "hidden";
+  $("#editSave").onclick = async () => {
+    const v = vals(), err = cfg.validate ? cfg.validate(v) : null, box = $("#editErr");
+    if (err){ box.textContent = err; box.classList.remove("hidden"); return; }
+    const b = $("#editSave"); b.disabled = true; b.textContent = "Saving…";
+    try { await cfg.onSave(v); closeEdit(); toast("Changes saved"); if (cfg.after) cfg.after(); }
+    catch(e){ box.textContent = "Couldn't save: " + friendlyErr(e); box.classList.remove("hidden"); b.disabled = false; b.textContent = "Save changes"; }
+  };
+}
+const tierOptions = () => state.tiers.map(t => ({ value:t.key, label:t.label }));
+const typeOptions = () => PARTNER_TYPES.map(t => ({ value:t.key, label:t.key }));
+function toggleTypeFields(v, body){ body.querySelector('[data-fk="brokerage"]')?.classList.toggle("hidden", v.type !== "Realtor"); body.querySelector('[data-fk="company"]')?.classList.toggle("hidden", v.type !== "Contractor"); }
+function checkPartnerFields(v){
+  if (v.name.length < 2) return "Enter a full name.";
+  if (!validPhone(v.phone)) return "Enter a valid 10-digit phone number.";
+  if (v.type === "Realtor" && (v.brokerage || "").length < 2) return "Brokerage is required for realtors";
+  if (v.email !== undefined && !validEmail(v.email)) return "Enter a valid email address.";
+  return null;
+}
+function checkReferralFields(v){
+  if (v.name.length < 2) return "Enter the client's name.";
+  if (!validPhone(v.phone)) return "Enter a valid 10-digit phone number.";
+  if (v.address.length < 6) return "Enter the project address.";
+  return null;
+}
+function editMyProfile(){
+  const me = state.me;
+  openEdit({ title:"Edit my info", fields:[
+    { key:"name", label:"Full name", value:me.name },
+    { key:"phone", label:"Phone", type:"tel", value:me.phone },
+    { key:"type", label:"I am a", type:"select", value:me.partner_type, options:typeOptions() },
+    { key:"brokerage", label:"Brokerage", value:me.brokerage || "" },
+    { key:"company", label:"Company or trade", value:me.company || "" },
+    { key:"email", label:"Email", value:me.email, readonly:true, hint:"To change your sign-in email, contact JNM." }
+  ], onChange:toggleTypeFields, validate:v => checkPartnerFields({ ...v, email:undefined }),
+     onSave:async v => { await api.updateProfile(v); Object.assign(state.me, { name:v.name, phone:normPhone(v.phone), partner_type:v.type, brokerage:v.brokerage, company:v.company }); },
+     after:() => render() });
+}
+function editMyReferral(r){
+  openEdit({ title:"Edit referral", intro:"You can change these details until our team contacts your client.", fields:[
+    { key:"name", label:"Client name", value:r.client_name },
+    { key:"phone", label:"Client phone", type:"tel", value:r.client_phone },
+    { key:"address", label:"Project address", value:r.client_address },
+    { key:"project", label:"Project type", type:"select", value:r.project_type, options:tierOptions() },
+    { key:"notes", label:"Notes (optional)", type:"textarea", value:r.notes || "" }
+  ], validate:checkReferralFields, onSave:v => api.updateMyReferral(r.id, v), after:() => viewMine() });
+}
+function ownerEditReferral(r){
+  openEdit({ title:"Edit referral", fields:[
+    { key:"name", label:"Client name", value:r.client_name },
+    { key:"phone", label:"Client phone", type:"tel", value:r.client_phone },
+    { key:"address", label:"Project address", value:r.client_address },
+    { key:"project", label:"Project type", type:"select", value:r.project_type, options:tierOptions(), hint:"Changing the project type resets the payout to that type's amount. You can still adjust the payout on the card." },
+    { key:"notes", label:"Notes", type:"textarea", value:r.notes || "" }
+  ], validate:checkReferralFields, onSave:v => {
+      const patch = { client_name:v.name, client_phone:normPhone(v.phone), client_address:v.address, notes:v.notes || null, project_type:v.project };
+      if (v.project !== r.project_type){ const t = state.tiers.find(x => x.key === v.project); if (t) patch.payout = +t.amount; }
+      return api.updateReferral(r.id, patch);
+    }, after:() => viewOwner() });
+}
+function ownerEditPartner(p){
+  openEdit({ title:"Edit partner", fields:[
+    { key:"name", label:"Full name", value:p.name },
+    { key:"phone", label:"Phone", type:"tel", value:p.phone },
+    { key:"email", label:"Email for updates", type:"email", value:p.email, hint:"Emails and updates go here. Their sign-in email stays the same." },
+    { key:"type", label:"Account type", type:"select", value:p.partner_type, options:typeOptions() },
+    { key:"brokerage", label:"Brokerage", value:p.brokerage || "" },
+    { key:"company", label:"Company or trade", value:p.company || "" }
+  ], onChange:toggleTypeFields, validate:checkPartnerFields, onSave:v => api.updatePartner(p.id, {
+      name:v.name, phone:normPhone(v.phone), email:v.email.toLowerCase(), partner_type:v.type,
+      brokerage:v.type === "Realtor" ? v.brokerage || null : p.brokerage, company:v.type === "Contractor" ? v.company || null : p.company }),
+    after:() => viewOwner() });
+}
+
 /* ---------- bell + Updates feed ---------- */
 let bellRole = null;
 function timeAgo(iso){ const s = (Date.now() - new Date(iso)) / 1000; if (s < 60) return "Just now"; if (s < 3600) return Math.floor(s/60) + "m ago"; if (s < 86400) return Math.floor(s/3600) + "h ago"; if (s < 604800) return Math.floor(s/86400) + "d ago"; return fmtDate(iso); }
@@ -930,10 +1049,11 @@ function viewRefer(){
     </section>
     <div class="need" id="need" style="margin-top:18px"></div>
     <button class="btn" id="send" disabled>Send referral</button>
-    <div class="sending-as small" style="margin-top:16px"><span class="muted">Signed in as ${esc(me.name)} · ${esc(me.partner_type)}</span><button class="linkbtn" id="lo">Sign out</button></div>
+    <div class="sending-as small" style="margin-top:16px"><span class="muted">Signed in as ${esc(me.name)} · ${esc(me.partner_type)}</span><span style="display:flex;gap:14px"><button class="linkbtn" id="editMe">Edit my info</button><button class="linkbtn" id="lo">Sign out</button></span></div>
     ${footer()}`;
   liveFormat($("#cPhone")); wireHomeTip(); wireNotif("partner"); syncPush();
   $("#lo").onclick = async () => { await api.signOut("partner"); state.project = null; render(); };
+  $("#editMe").onclick = editMyProfile;
   $("#projOpts").onclick = e => { const b = e.target.closest(".opt"); if (!b) return; state.project = b.dataset.k;
     app.querySelectorAll("#projOpts .opt").forEach(x => x.setAttribute("aria-pressed", x === b));
     setEarn("You earn", money(state.tiers.find(x => x.key === state.project).amount), true); check(); };
@@ -1016,10 +1136,15 @@ async function viewMine(){
           <div style="text-align:right"><b class="sans">${money(r.payout)}</b><div class="small muted">${r.status === "paid" ? "paid" : "at install"}</div></div></div>
           ${tracker(r)}
           <div class="small next ${r.status}">${NEXT[r.status] || ""}</div>
+          ${r.status === "new" ? `<button class="linkbtn" data-edit-ref="${r.id}" style="margin-top:10px;font-size:13px">Edit details</button>` : ""}
         </div>`).join("")
       : `<div class="empty">No referrals yet. Your first one takes about 30 seconds.</div>`}
     </section>
-    <button class="btn" onclick="go('refer')">Send a referral</button>${langBar()}`;
+    ${rows.some(r => r.status !== "new") ? `<p class="small muted" style="text-align:center;margin:14px 0 0">Need to fix a referral that's already in progress? Contact JNM${CONFIG.COMPANY_PHONE ? ` at <a href="tel:${digits(CONFIG.COMPANY_PHONE)}">${esc(CONFIG.COMPANY_PHONE)}</a>` : ""}.</p>` : ""}
+    <button class="btn" onclick="go('refer')">Send a referral</button>
+    <div style="text-align:center;margin-top:16px"><button class="linkbtn" id="editMe2">Edit my info</button></div>${langBar()}`;
+  app.querySelectorAll("[data-edit-ref]").forEach(b => b.onclick = () => editMyReferral(rows.find(r => r.id === b.dataset.editRef)));
+  $("#editMe2").onclick = editMyProfile;
   wireNotif("partner");
   const now = Object.fromEntries(rows.map(r => [r.id, lastUpdate(r)])); store.set(seenKey(), now); setUnseen(0);
 }
@@ -1202,6 +1327,7 @@ function ownerReferrals(refs, ps){
             <dt>From</dt><dd>${esc(p.name)} · ${esc(p.partner_type)}${p.lang === "es" ? " · Spanish" : ""}${p.brokerage ? " · " + esc(p.brokerage) : ""}${p.company ? " · " + esc(p.company) : ""}${partnerBadge(p.status)}<br><a href="tel:${digits(p.phone)}">${esc(fmtPhone(p.phone))}</a>${p.email ? ` · <a href="mailto:${esc(p.email)}">${esc(p.email)}</a>` : ""}</dd>
           </dl>
           ${STAMPS.some(k => r[k]) ? `<div class="small muted" style="margin-top:8px">${STAMPS.filter(k => r[k]).map(k => `${(STATUSES.find(s => s.key === k.replace("_at","")) || {}).label} ${shortDate(r[k])}`).join(" · ")}</div>` : ""}
+          <button class="linkbtn" data-edit-ref style="margin-top:10px;font-size:13px">Edit details</button>
           <div class="status-row">${STATUSES.map(s => `<button data-s="${s.key}" aria-pressed="${r.status===s.key}">${s.label}</button>`).join("")}</div>
           <div class="pay-row"><span class="l" style="margin:0">Payout $</span><input class="in" type="number" inputmode="numeric" min="0" step="25" value="${+r.payout}" data-pay>${r.paid_at ? `<span class="small muted">Paid ${fmtDate(r.paid_at)}</span>` : ""}</div>
           ${r.recruiter_id ? (() => { const rec = ps.find(x => x.id === r.recruiter_id); const due = ["installed","paid"].includes(r.status);
@@ -1222,6 +1348,7 @@ function ownerReferrals(refs, ps){
       try { await api.updateReferral(r.id, patch); toast(`Marked ${b.textContent.toLowerCase()}`); state.justUpdated = r.id; state.adminFilter = b.dataset.s; viewOwner(); } catch(err){ toast("Couldn't update: " + err.message); }
     };
     wireQB(el, ps);
+    el.querySelector("[data-edit-ref]").onclick = () => ownerEditReferral(r);
     const bb = el.querySelector("[data-bonus]");
     if (bb) bb.onclick = async () => { try { await api.updateReferral(r.id, { recruiter_paid_at: r.recruiter_paid_at ? null : new Date().toISOString() }); toast(r.recruiter_paid_at ? "Bonus marked unpaid" : "Bonus marked paid"); viewOwner(); } catch(err){ toast("Couldn't update: " + err.message); } };
     el.querySelector("[data-pay]").onchange = async e => {
@@ -1289,6 +1416,7 @@ function ownerPartners(ps, refs){
           ${p.status === "approved" && (needsSetup(p, refs) || (p.payout_status || "not_invited") !== "not_invited") ? `<span class="l" style="margin:14px 0 6px">Payout setup · QuickBooks</span>
           <div class="ps-row">${Object.entries(PAYOUT_SETUP).map(([k,v]) => `<button data-ps="${k}" aria-pressed="${(p.payout_status || "not_invited") === k}">${v}</button>`).join("")}</div>
           <button class="linkbtn" data-qb style="margin-top:10px;font-size:12.5px">Copy info for QuickBooks</button>` : p.status === "approved" ? `<div class="small muted" style="margin-top:12px">QuickBooks setup: after their first installed job</div>` : ""}
+          <button class="linkbtn" data-edit-p style="margin-top:12px;font-size:13px">Edit details</button>
           <div class="act-row">
             ${p.status === "pending" ? `<button class="btn sm" data-act="approved">Approve</button><button class="btn sm ghost" data-act="declined">Decline</button>` : ""}
             ${p.status === "approved" ? `<button class="btn sm ghost" data-act="deactivated">Deactivate</button>` : ""}
@@ -1301,6 +1429,7 @@ function ownerPartners(ps, refs){
     </section>`;
   $("#pflt").onclick = e => { const b = e.target.closest("[data-f]"); if (!b) return; state.partnerFilter = b.dataset.f; state.justApproved = null; ownerPartners(ps, refs); };
   $("#inv").onclick = async () => { try { await navigator.clipboard.writeText(appLink()); toast("Invite link copied"); } catch { prompt("Copy this link:", appLink()); } };
+  $("#aBody").querySelectorAll("[data-edit-p]").forEach(b => b.onclick = () => ownerEditPartner(ps.find(x => x.id === b.closest("[data-pid]").dataset.pid)));
   $("#aBody").querySelectorAll("[data-act]").forEach(b => b.onclick = async () => {
     const id = b.closest("[data-pid]").dataset.pid; const to = b.dataset.act; const p = ps.find(x => x.id === id);
     if (to !== "approved" && !confirm(`${to === "declined" ? "Decline" : "Deactivate"} ${p.name}? They won't be able to send referrals.`)) return;
@@ -1353,8 +1482,9 @@ function exportCSV(refs, ps){
 
 /* ---------- boot ---------- */
 $("#bell").onclick = openFeed; $("#feedClose").onclick = closeFeed;
+$("#editClose").onclick = closeEdit; $("#edit").onclick = e => { if (e.target.id === "edit") closeEdit(); };
 $("#feed").onclick = e => { if (e.target.id === "feed") closeFeed(); };
-document.addEventListener("keydown", e => { if (e.key === "Escape") closeFeed(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape"){ closeFeed(); closeEdit(); } });
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && bellRole) refreshBell(bellRole); });
 (async function(){
   try { const t = await api.tiers(); if (t && t.length) state.tiers = t; } catch(e){ console.warn("Using default payouts", e); }
