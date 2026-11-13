@@ -463,6 +463,22 @@ body.public nav.tabs, body.public .top-right{ display:none !important; }
 .qr-full{ position:fixed; inset:0; z-index:50; background:#fff; display:grid; place-items:center; text-align:center; color:#000; font-family:var(--sans); font-size:20px; padding:20px; }
 .qr-full svg{ width:min(78vw, 78vh); height:auto; } .qr-full .qr-x{ font-size:14px; color:#666; }
 .src-tag{ font-family:var(--mono); font-size:11.5px; font-weight:600; color:var(--cyan); border:1px solid rgba(14,181,211,.5); padding:1px 6px; margin-left:4px; white-space:nowrap; }
+.cel{ position:fixed; inset:0; z-index:60; display:grid; place-items:center; padding:24px; background:rgba(0,6,10,.55); -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px); animation:celIn .25s ease-out; }
+.cel.big{ background:radial-gradient(70% 50% at 50% 40%, rgba(14,181,211,.30), rgba(0,6,10,.82) 70%); }
+.cel.out{ opacity:0; transition:opacity .2s; }
+.cel-fx{ position:fixed; inset:0; width:100%; height:100%; pointer-events:none; }
+.cel-card{ position:relative; width:100%; max-width:360px; text-align:center; padding:28px 22px 22px; background:linear-gradient(160deg, #0f2430, #08121a 60%, #0c2149); clip-path:polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 0 100%); }
+.cel-card::before{ content:""; position:absolute; left:0; right:0; top:0; height:4px; background:var(--grad); }
+.cel-ic{ font-size:46px; line-height:1; margin-bottom:10px; }
+.cel.big .cel-ic{ animation:celPop .6s cubic-bezier(.2,1.6,.4,1) both; }
+.cel-card h2{ margin:0 0 8px; font-family:var(--sans); font-weight:700; font-size:26px; line-height:1.15; }
+.cel-pre{ margin:0; color:#c5d4da; font-size:15.5px; }
+.cel-amt{ font-family:var(--sans); font-weight:700; font-size:54px; line-height:1.05; margin:6px 0 2px; background:linear-gradient(100deg, #fff, #bff3ff 45%, #0eb5d3); -webkit-background-clip:text; background-clip:text; color:transparent; }
+.cel-post{ margin:4px 0 18px; color:var(--muted); font-size:14.5px; }
+.cel-go{ margin-top:4px; }
+@keyframes celIn{ from{ opacity:0; } to{ opacity:1; } }
+@keyframes celPop{ 0%{ transform:scale(.3) rotate(-12deg); opacity:0; } 100%{ transform:scale(1) rotate(0); opacity:1; } }
+@media (prefers-reduced-motion: reduce){ .cel, .cel.big .cel-ic{ animation:none; } }
 </style>
 </head>
 <body>
@@ -2089,7 +2105,66 @@ function setUnseen(n){
   if (b) b.innerHTML = "My referrals" + (n ? ` <span class="count">${n}</span>` : "");
 }
 async function refreshUnseen(){
-  try { const rows = await api.myReferrals(); const seen = store.get(seenKey(), {}); setUnseen(rows.filter(r => isUnseen(r, seen)).length); } catch(e){}
+  try { const rows = await api.myReferrals(); const seen = store.get(seenKey(), {}); setUnseen(rows.filter(r => isUnseen(r, seen)).length); checkCelebrations(rows); } catch(e){}
+}
+
+/* ---------- celebrations ---------- */
+const CEL_RANK = { new:0, contacted:1, appointment:2, signed:3, installed:4, paid:5, dead:-1 };
+const celKey = () => "jnm_cel_" + (state.me?.id || "");
+let celQueue = [], celShowing = false;
+function celText(kind, d){
+  const es = LANG === "es", c = d.client || "";
+  const T = {
+    first:     es ? ["¡Primer referido enviado!", `Ya estás en juego. ${c ? c + " podría hacerte ganar" : "Podrías ganar"}`, "cuando se instale el trabajo."] : ["First referral sent!", `You're officially in the game. ${c ? c + " could earn you" : "You could earn"}`, "once the job is installed."],
+    sent:      es ? ["¡Referido enviado!", "+1 punto · Esto podría hacerte ganar", "cuando se instale."] : ["Referral sent!", "+1 point · This one could earn you", "once it's installed."],
+    approved:  es ? ["¡Ya estás dentro!", "Bienvenido al equipo de socios de JNM.", "Envía tu primer referido para empezar a ganar."] : ["You're in!", "Welcome to the JNM partner team.", "Send your first referral to start earning."],
+    signed:    es ? [`¡${c} firmó!`, "Vienen en camino", "cuando se instale el trabajo."] : [`${c} signed!`, "Coming your way", "once the job is installed."],
+    installed: es ? [`¡El trabajo de ${c} está instalado!`, "Tu pago está en camino", "¡Gran trabajo!"] : [`${c}'s job is installed!`, "Your payout is on the way", "Nice work!"],
+    paid:      es ? ["¡Te pagamos!", "Acabas de ganar", "Gracias por el referido. ¡Sigue enviando más!"] : ["You got paid!", "You just earned", "Thanks for the referral. Keep them coming!"]
+  }[kind];
+  return { title:T[0], pre:T[1], post:T[2] };
+}
+function celebrate(kind, d){ celQueue.push({ kind, d:d || {} }); if (!celShowing) nextCel(); }
+function nextCel(){
+  const item = celQueue.shift(); if (!item){ celShowing = false; return; }
+  celShowing = true;
+  const { kind, d } = item, t = celText(kind, d), big = kind !== "sent", amt = d.amount ? Math.round(+d.amount) : 0;
+  const icon = { first:"🚀", sent:"✅", approved:"🎉", signed:"✍️", installed:"🏠", paid:"💸" }[kind];
+  const o = document.createElement("div"); o.className = "cel" + (big ? " big" : ""); o.setAttribute("role", "dialog"); o.setAttribute("aria-label", t.title);
+  o.innerHTML = `<canvas class="cel-fx"></canvas><div class="cel-card"><div class="cel-ic">${icon}</div><h2>${esc(t.title)}</h2>
+    <p class="cel-pre">${esc(t.pre)}</p>${amt ? `<div class="cel-amt" data-to="${amt}">$0</div>` : ""}<p class="cel-post">${esc(t.post)}</p>
+    <button class="btn cel-go">${LANG === "es" ? (celQueue.length ? "Siguiente" : "¡Genial!") : (celQueue.length ? "Next" : "Let's go")}</button></div>`;
+  document.body.appendChild(o);
+  try { navigator.vibrate?.(big ? [30, 40, 60] : 25); } catch(e){}
+  const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const a = o.querySelector(".cel-amt");
+  if (a){ if (calm) a.textContent = money(amt); else { const t0 = performance.now(), dur = big ? 1100 : 700; const step = now => { const k = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - k, 3); a.textContent = money(Math.round(amt * e)); if (k < 1) requestAnimationFrame(step); }; requestAnimationFrame(step); } }
+  if (!calm) confetti(o.querySelector(".cel-fx"), big ? 160 : 70);
+  const close = () => { o.classList.add("out"); setTimeout(() => { o.remove(); nextCel(); }, 220); };
+  o.querySelector(".cel-go").onclick = close;
+
+}
+function confetti(cv, n){
+  const dpr = Math.min(2, window.devicePixelRatio || 1), W = innerWidth, H = innerHeight; cv.width = W * dpr; cv.height = H * dpr; const x = cv.getContext("2d"); x.scale(dpr, dpr);
+  const cols = ["#0eb5d3", "#2a6bdc", "#ffffff", "#f5c451", "#7fe3f5"];
+  const ps = Array.from({ length:n }, () => ({ x:W / 2 + (Math.random() - .5) * 60, y:H * .42, vx:(Math.random() - .5) * 13, vy:-Math.random() * 14 - 5, w:6 + Math.random() * 6, h:3 + Math.random() * 5, r:Math.random() * 6, vr:(Math.random() - .5) * .35, c:cols[Math.floor(Math.random() * cols.length)] }));
+  const t0 = performance.now();
+  (function frame(now){ const t = now - t0; x.clearRect(0, 0, W, H);
+    ps.forEach(p => { p.vy += .32; p.vx *= .99; p.x += p.vx; p.y += p.vy; p.r += p.vr; x.save(); x.translate(p.x, p.y); x.rotate(p.r); x.globalAlpha = Math.max(0, 1 - t / 2600); x.fillStyle = p.c; x.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); x.restore(); });
+    if (t < 2600 && document.body.contains(cv)) requestAnimationFrame(frame); else x.clearRect(0, 0, W, H); })(t0);
+}
+function checkCelebrations(rows){
+  if (!state.me || !state.me.id) return;
+  const key = celKey(), map = store.get(key, null);
+  const snapshot = () => { const m = { _approved: state.me.status === "approved" }; rows.forEach(r => m[r.id] = r.status); return m; };
+  if (map === null){ store.set(key, snapshot()); return; }
+  if (state.me.status === "approved" && !map._approved) celebrate("approved");
+  const events = [];
+  rows.forEach(r => { const was = CEL_RANK[map[r.id] ?? "new"] ?? 0, now = CEL_RANK[r.status] ?? 0;
+    const c = (r.client_name || "").split(" ")[0];
+    if (now > was){ if (r.status === "paid") events.push(["paid", { client:c, amount:r.payout }, 3]); else if (r.status === "installed") events.push(["installed", { client:c, amount:r.payout }, 2]); else if (r.status === "signed") events.push(["signed", { client:c, amount:r.payout }, 1]); } });
+  events.sort((a,b) => a[2] - b[2]).slice(-4).forEach(e => celebrate(e[0], e[1]));
+  store.set(key, snapshot());
 }
 function setEarn(label, amt, bump){
   $("#earnLabel").textContent = label; const s = $("#earnAmt"); s.textContent = amt;
@@ -2934,6 +3009,10 @@ function viewRefer(){
       const tier = state.tiers.find(t => t.key === r.project);
       notifyOwner({ _subject:`New referral: ${tier.label} — ${r.name}${me.status==="pending" ? " (partner pending approval)" : ""}`, project:tier.label, payout:money(amount), client_name:r.name, client_phone:fmtPhone(r.phone), client_address:r.address, notes:r.notes, referred_by:me.name, referrer_phone:fmtPhone(me.phone), referrer_type:me.partner_type, partner_status:me.status, dashboard:appLink() + "#owner" });
       viewDone(tier, amount);
+      try { const rows = await api.myReferrals(); const first = rows.length === 1;
+        celebrate(first ? "first" : "sent", { client:r.name.split(" ")[0], amount });
+        const map = store.get(celKey(), null); if (map){ rows.forEach(x => { if (!(x.id in map)) map[x.id] = x.status; }); store.set(celKey(), map); }
+      } catch(e){ celebrate("sent", { amount }); }
     } catch (e) {
       console.error(e); btn.disabled = false; btn.textContent = "Send referral";
       const n = $("#need"); n.className = "need err"; n.textContent = "Couldn't send: " + (e.message || "check your connection") + ". Your info is still here, try again.";
@@ -3007,7 +3086,7 @@ async function viewMine(){
   app.querySelectorAll("[data-edit-ref]").forEach(b => b.onclick = () => editMyReferral(rows.find(r => r.id === b.dataset.editRef)));
   $("#editMe2").onclick = editMyProfile;
   wireNotif("partner");
-  const now = Object.fromEntries(rows.map(r => [r.id, lastUpdate(r)])); store.set(seenKey(), now); setUnseen(0);
+  const now = Object.fromEntries(rows.map(r => [r.id, lastUpdate(r)])); store.set(seenKey(), now); setUnseen(0); checkCelebrations(rows);
 }
 
 /* ============================================================
