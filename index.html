@@ -608,6 +608,14 @@ const api = {
       demoDB.save(db); return; }
     await rpc("update_my_referral", { p_id:id, p_client_name:v.name, p_client_phone:normPhone(v.phone), p_client_address:v.address, p_notes:v.notes || "", p_project:v.project });
   },
+  async remindersOff(){
+    if (!LIVE){ const db = demoDB.load(); const e = store.get(demoSess("partner"), null); return !!(db.partners.find(x => x.email === e) || {}).reminders_off; }
+    try { return !!(await rpc("my_reminders_off")); } catch(e){ return false; }
+  },
+  async setReminders(off){
+    if (!LIVE){ const db = demoDB.load(); const e = store.get(demoSess("partner"), null); const p = db.partners.find(x => x.email === e); if (p) p.reminders_off = off; demoDB.save(db); return; }
+    await rpc("set_my_reminders", { p_off:off });
+  },
   async setLang(l){ if (!LIVE) return; try { await rpc("set_my_lang", { p_lang:l }); } catch(e){ console.warn("lang", e); } },
   async recruiterName(code){
     if (!code) return null;
@@ -817,7 +825,8 @@ const ES = {
   "Your partner account is not active":"Tu cuenta de socio no está activa", "Name and a 10-digit phone are required":"Se requieren el nombre y un teléfono de 10 dígitos",
   "Choose an account type":"Elige un tipo de cuenta", "Brokerage is required for realtors":"La agencia es obligatoria para agentes de bienes raíces",
   "That phone number is already on another partner account":"Ese número de teléfono ya está en otra cuenta de socio",
-  "Notes from JNM":"Notas de JNM",
+  "Notes from JNM":"Notas de JNM", "Friendly reminders":"Recordatorios amistosos", "On":"Activados", "Off":"Desactivados",
+  "A short monthly nudge if you haven't sent a referral in a while.":"Un aviso breve al mes si no has enviado un referido en un tiempo.",
   "Edit my info":"Editar mis datos", "Edit details":"Editar datos", "Edit referral":"Editar referido", "Save changes":"Guardar cambios", "Saving…":"Guardando…", "Changes saved":"Cambios guardados",
   "You can change these details until our team contacts your client.":"Puedes cambiar estos datos hasta que nuestro equipo contacte a tu cliente.",
   "To change your sign-in email, contact JNM.":"Para cambiar tu correo de acceso, comunícate con JNM.",
@@ -1014,17 +1023,18 @@ function checkReferralFields(v){
   if (v.address.length < 6) return "Enter the project address.";
   return null;
 }
-function editMyProfile(){
-  const me = state.me;
+async function editMyProfile(){
+  const me = state.me; const wasOff = await api.remindersOff();
   openEdit({ title:"Edit my info", fields:[
     { key:"name", label:"Full name", value:me.name },
     { key:"phone", label:"Phone", type:"tel", value:me.phone },
     { key:"type", label:"I am a", type:"select", value:me.partner_type, options:typeOptions() },
     { key:"brokerage", label:"Brokerage", value:me.brokerage || "" },
     { key:"company", label:"Company or trade", value:me.company || "" },
-    { key:"email", label:"Email", value:me.email, readonly:true, hint:"To change your sign-in email, contact JNM." }
+    { key:"email", label:"Email", value:me.email, readonly:true, hint:"To change your sign-in email, contact JNM." },
+    { key:"reminders", label:"Friendly reminders", type:"select", value:wasOff ? "off" : "on", options:[{ value:"on", label:"On" }, { value:"off", label:"Off" }], hint:"A short monthly nudge if you haven't sent a referral in a while." }
   ], onChange:toggleTypeFields, validate:v => checkPartnerFields({ ...v, email:undefined }),
-     onSave:async v => { await api.updateProfile(v); Object.assign(state.me, { name:v.name, phone:normPhone(v.phone), partner_type:v.type, brokerage:v.brokerage, company:v.company }); },
+     onSave:async v => { await api.updateProfile(v); if ((v.reminders === "off") !== wasOff) await api.setReminders(v.reminders === "off"); Object.assign(state.me, { name:v.name, phone:normPhone(v.phone), partner_type:v.type, brokerage:v.brokerage, company:v.company }); },
      after:() => render() });
 }
 function editMyReferral(r){
@@ -1640,6 +1650,7 @@ function ownerPartners(ps, refs){
             <dt>Phone</dt><dd><a href="tel:${digits(p.phone)}">${esc(fmtPhone(p.phone))}</a></dd>
             <dt>Email</dt><dd><a href="mailto:${esc(p.email)}">${esc(p.email)}</a></dd>
             <dt>Applied</dt><dd>${fmtDate(p.created_at)}</dd>
+            ${p.reminders_off ? `<dt>Reminders</dt><dd class="muted">Turned off</dd>` : ""}
             ${p.prev_phone ? `<dt>Prev. phone</dt><dd class="muted">${esc(fmtPhone(p.prev_phone))}</dd>` : ""}
             <dt>Referrals</dt><dd>${rs.length} sent${owed ? ` · <span style="color:var(--warn)">${money(owed)} owed</span>` : ""}${pd ? ` · ${money(pd)} paid` : ""}</dd>
             ${p.lang === "es" ? `<dt>Language</dt><dd>Spanish</dd>` : ""}
