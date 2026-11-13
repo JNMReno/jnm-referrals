@@ -430,6 +430,16 @@ input.in, select.in, textarea.in{ background:rgba(18,27,33,.9); transition:borde
 .lb-row.lb-open .lb-name{ font-family:var(--mono); font-weight:500; font-size:14px; color:var(--muted); }
 .lb-row.lb-open .lb-rank{ opacity:.5; }
 .lb-spot{ margin-top:14px; padding:14px 16px; background:var(--field); border-left:3px solid var(--cyan); font-size:15px; }
+.promo{ position:relative; display:grid; grid-template-columns:28px 1fr; gap:10px; margin-top:16px; padding:14px 40px 14px 14px; background:linear-gradient(110deg, rgba(14,181,211,.18), rgba(42,107,220,.12) 60%, rgba(11,18,22,.9)); border-left:3px solid var(--cyan); }
+.promo.boost{ background:linear-gradient(110deg, rgba(245,184,74,.18), rgba(239,68,68,.10) 60%, rgba(11,18,22,.9)); border-left-color:#f5b84a; padding-right:14px; }
+.promo-k{ font-size:20px; line-height:1.2; }
+.promo b{ font-family:var(--sans); font-size:16px; display:block; margin-bottom:2px; }
+.promo-x{ position:absolute; top:6px; right:6px; width:30px; height:30px; background:none; border:0; color:var(--muted); font-size:22px; cursor:pointer; }
+.boost-tag{ font-style:normal; font-size:11.5px; font-weight:700; color:#1a1405; background:#f5b84a; padding:1px 5px; margin-left:4px; }
+.opt[aria-pressed="true"] .boost-tag{ background:#fff; color:var(--ink); }
+.promo-row{ display:flex; justify-content:space-between; gap:12px; align-items:flex-start; padding:12px 0; border-top:1px solid var(--line-soft); }
+.promo-row:first-child{ border-top:0; padding-top:0; }
+.sec-h .btn.sm{ font-size:13px; padding:7px 14px; }
 </style>
 </head>
 <body>
@@ -591,13 +601,15 @@ const api = {
   async submitReferral(r){
     if (!LIVE){
       const db = demoDB.load(); const e = store.get(demoSess("partner"), null);
-      const partner = db.partners.find(x => x.email === e); const tier = db.tiers.find(t => t.key === r.project);
+      const partner = db.partners.find(x => x.email === e); const tier0 = db.tiers.find(t => t.key === r.project);
+      const bst = (db.boosts || []).filter(b => b.project_type === r.project && b.starts_at <= new Date().toISOString() && b.ends_at > new Date().toISOString()).reduce((m,b) => Math.max(m, +b.extra), 0);
+      const tier = { ...tier0, amount:+tier0.amount + bst };
       if (!partner || !["pending","approved"].includes(partner.status)) throw new Error("Your account can't send referrals right now");
-      db.referrals.unshift({ id:crypto.randomUUID(), partner_id:partner.id, client_name:r.name, client_phone:digits(r.phone), client_address:r.address, project_type:r.project, notes:r.notes, consent:true, status:"new", payout:tier.amount, recruiter_id: partner.recruited_by || null, recruiter_bonus: partner.recruited_by ? (db.settings?.recruiter_bonus ?? DEFAULT_BONUS) : 0, recruiter_paid_at:null, created_at:new Date().toISOString(), paid_at:null });
+      db.referrals.unshift({ id:crypto.randomUUID(), partner_id:partner.id, client_name:r.name, client_phone:digits(r.phone), client_address:r.address, client_email:r.email || null, client_lang:r.clientLang || "en", project_type:r.project, notes:r.notes, consent:true, status:"new", payout:tier.amount, recruiter_id: partner.recruited_by || null, recruiter_bonus: partner.recruited_by ? (db.settings?.recruiter_bonus ?? DEFAULT_BONUS) : 0, recruiter_paid_at:null, created_at:new Date().toISOString(), paid_at:null });
       db.notes = db.notes || []; db.notes.unshift({ id:crypto.randomUUID(), to:"__owner", title:`New referral: ${tier.label}`, body:`${r.name} from ${partner.name} · ${money(tier.amount)}`, path:"#owner", created_at:new Date().toISOString(), read_at:null });
       demoDB.save(db); return tier.amount;
     }
-    return rpc("submit_referral", { p_project:r.project, p_client_name:r.name, p_client_phone:r.phone, p_client_address:r.address, p_notes:r.notes || "", p_consent:true });
+    return rpc("submit_referral", { p_project:r.project, p_client_name:r.name, p_client_phone:r.phone, p_client_address:r.address, p_notes:r.notes || "", p_consent:true, p_client_email:r.email || "", p_client_lang:r.clientLang || "en" });
   },
   async myReferrals(){
     if (!LIVE){
@@ -627,6 +639,43 @@ const api = {
         db.notes = db.notes || []; db.notes.unshift({ id:crypto.randomUUID(), to:"__owner", title:"A partner updated a referral", body:`${v.name}: ${Object.keys(ch).join(", ")} changed`, path:"#owner", created_at:r.edited_at, read_at:null }); }
       demoDB.save(db); return; }
     await rpc("update_my_referral", { p_id:id, p_client_name:v.name, p_client_phone:normPhone(v.phone), p_client_address:v.address, p_notes:v.notes || "", p_project:v.project });
+  },
+  async promos(){
+    const now = new Date().toISOString();
+    if (!LIVE){ const db = demoDB.load(); return { anns:(db.anns || []).filter(a => a.expires_at > now).sort((a,b) => b.created_at.localeCompare(a.created_at)).slice(0,3), boosts:(db.boosts || []).filter(b => b.starts_at <= now && b.ends_at > now) }; }
+    const [a, b] = await Promise.all([
+      sb.from("announcements").select("*").gt("expires_at", now).order("created_at", { ascending:false }).limit(3),
+      sb.from("payout_boosts").select("*").lte("starts_at", now).gt("ends_at", now)]);
+    return { anns:a.data || [], boosts:b.data || [] };
+  },
+  async ownerPromos(){
+    if (!LIVE){ const db = demoDB.load(); return { anns:(db.anns || []).slice().sort((a,b) => b.created_at.localeCompare(a.created_at)).slice(0,10), boosts:(db.boosts || []).slice().sort((a,b) => b.created_at.localeCompare(a.created_at)).slice(0,10) }; }
+    const [a, b] = await Promise.all([
+      sb.from("announcements").select("*").order("created_at", { ascending:false }).limit(10),
+      sb.from("payout_boosts").select("*").order("created_at", { ascending:false }).limit(10)]);
+    if (a.error) throw a.error; if (b.error) throw b.error;
+    return { anns:a.data || [], boosts:b.data || [] };
+  },
+  async announce(v, email){
+    if (!LIVE){ const db = demoDB.load(); db.anns = db.anns || []; const a = { id:crypto.randomUUID(), ...v, created_at:new Date().toISOString() }; db.anns.push(a);
+      db.notes = db.notes || []; db.partners.filter(p => p.status === "approved").forEach(p => db.notes.unshift({ id:crypto.randomUUID(), to:p.email, title:(p.lang === "es" && v.title_es) || v.title, body:(p.lang === "es" && v.body_es) || v.body, path:"#refer", created_at:a.created_at, read_at:null }));
+      demoDB.save(db); return db.partners.filter(p => p.status === "approved").length; }
+    const { data, error } = await sb.from("announcements").insert(v).select("id").single(); if (error) throw error;
+    return rpc("send_announcement", { p_id:data.id, p_email:!!email });
+  },
+  async endAnnouncement(id){
+    const now = new Date().toISOString();
+    if (!LIVE){ const db = demoDB.load(); const a = (db.anns || []).find(x => x.id === id); if (a) a.expires_at = now; demoDB.save(db); return; }
+    const { error } = await sb.from("announcements").update({ expires_at:now }).eq("id", id); if (error) throw error;
+  },
+  async addBoost(v){
+    if (!LIVE){ const db = demoDB.load(); db.boosts = db.boosts || []; db.boosts.push({ id:crypto.randomUUID(), starts_at:new Date().toISOString(), created_at:new Date().toISOString(), ...v }); demoDB.save(db); return; }
+    const { error } = await sb.from("payout_boosts").insert(v); if (error) throw error;
+  },
+  async endBoost(id){
+    const now = new Date().toISOString();
+    if (!LIVE){ const db = demoDB.load(); const b = (db.boosts || []).find(x => x.id === id); if (b) b.ends_at = now; demoDB.save(db); return; }
+    const { error } = await sb.from("payout_boosts").update({ ends_at:now }).eq("id", id); if (error) throw error;
   },
   async leaderboard(period){
     if (!LIVE) return demoBoard(period);
@@ -763,8 +812,10 @@ function setEarn(label, amt, bump){
   if (label === "Earn up to") s.insertAdjacentHTML("beforeend", '<span class="per">/Lead</span>');
   if (bump){ s.classList.add("bump"); setTimeout(() => s.classList.remove("bump"), 400); }
 }
-const maxTier = () => Math.max(...state.tiers.map(t => +t.amount));
+const effAmt = t => (+t.amount || 0) + (+t.boost || 0);
+const maxTier = () => Math.max(...state.tiers.map(effAmt));
 const minTier = () => Math.min(...state.tiers.map(t => +t.amount));
+const tierPrice = t => t.boost ? `${money(effAmt(t))} <em class="boost-tag">+${money(t.boost)}</em>` : money(t.amount);
 
 async function render(){
   const v = route(); renderTabs(v); window.scrollTo(0,0); clearApp(); hideBell();
@@ -776,6 +827,7 @@ async function render(){
   if (!state.me) return viewApply(email);
   if (state.me.status === "declined" || state.me.status === "deactivated") return viewLocked();
   refreshBell("partner");
+  if (!state.promosLoaded || Date.now() - state.promosLoaded > 120000){ await loadPromos(); state.promosLoaded = Date.now(); }
   if (!state.langSynced){ state.langSynced = true; api.setLang(LANG); }
   if (v === "mine") return viewMine();
   if (v === "invite") return viewInvite();
@@ -858,7 +910,8 @@ const ES = {
   "Your partner account is not active":"Tu cuenta de socio no está activa", "Name and a 10-digit phone are required":"Se requieren el nombre y un teléfono de 10 dígitos",
   "Choose an account type":"Elige un tipo de cuenta", "Brokerage is required for realtors":"La agencia es obligatoria para agentes de bienes raíces",
   "That phone number is already on another partner account":"Ese número de teléfono ya está en otra cuenta de socio",
-  "Notes from JNM":"Notas de JNM", "Leaderboard":"Clasificación", "This month":"Este mes", "All-time":"Histórico", "Your points":"Tus puntos",
+  "Notes from JNM":"Notas de JNM", "@Dismiss":"@Cerrar", "Client email (optional)":"Correo del cliente (opcional)", "Client's language":"Idioma del cliente", "Client email":"Correo del cliente",
+  "We'll send them a quick note that you referred them, so they expect our call.":"Le enviaremos una nota breve diciendo que tú lo recomendaste, para que espere nuestra llamada.", "Leaderboard":"Clasificación", "This month":"Este mes", "All-time":"Histórico", "Your points":"Tus puntos",
   "Resets on the 1st":"Se reinicia el día 1", "Since launch":"Desde el inicio", "referral sent":"referido enviado", "appointment set":"cita programada", "job installed":"trabajo instalado",
   "This spot could be yours. Send a referral to claim it.":"Este lugar podría ser tuyo. Envía un referido para ganarlo.", "★ Founding":"★ Fundador", "You":"Tú", "pts":"pts",
   "You're hidden from the leaderboard. You can change this in Edit my info.":"Estás oculto en la clasificación. Puedes cambiarlo en Editar mis datos.",
@@ -1014,6 +1067,62 @@ function wireNotif(role){
     } catch(e){ console.error(e); b.disabled = false; b.textContent = "Turn on notifications"; toast("Couldn't turn on notifications: " + e.message); }
   };
 }
+/* ---------- promotions: announcements + payout boosts ---------- */
+const endOfDay = d => new Date(d + "T23:59:59").toISOString();
+const fmtEnd = iso => new Date(iso).toLocaleDateString(LOC(), { month:"short", day:"numeric" });
+function applyBoosts(boosts){
+  state.boosts = boosts || [];
+  state.tiers.forEach(t => { const b = state.boosts.filter(x => x.project_type === t.key); t.boost = b.length ? Math.max(...b.map(x => +x.extra)) : 0; t.boostInfo = b.sort((a,b) => +b.extra - +a.extra)[0] || null; });
+}
+async function loadPromos(){ try { const p = await api.promos(); applyBoosts(p.boosts); state.anns = p.anns; } catch(e){ console.warn("promos", e); state.anns = state.anns || []; } }
+function promoBanners(){
+  const es = LANG === "es", hidden = store.get("jnm_ann_hidden", []);
+  const anns = (state.anns || []).filter(a => !hidden.includes(a.id)).map(a => `<div class="promo ann" data-ann="${a.id}"><button class="promo-x" aria-label="Dismiss" data-hide="${a.id}">×</button><div class="promo-k">📣</div><div><b>${esc(es && a.title_es ? a.title_es : a.title)}</b><div>${esc(es && a.body_es ? a.body_es : a.body)}</div></div></div>`);
+  const boosts = state.tiers.filter(t => t.boost && t.boostInfo).map(t => { const b = t.boostInfo; const head = b.headline ? esc(b.headline) + ": " : "";
+    const line = es ? `${head}${esc(ES[t.label] || t.label)} paga ${money(effAmt(t))} (+${money(t.boost)}) hasta el ${fmtEnd(b.ends_at)}.` : `${head}${esc(t.label)} pays ${money(effAmt(t))} (+${money(t.boost)}) through ${fmtEnd(b.ends_at)}.`;
+    return `<div class="promo boost"><div class="promo-k">🔥</div><div><b>${es ? "Pago aumentado" : "Payout boost"}</b><div class="notr">${line}</div></div></div>`; });
+  return anns.concat(boosts).join("");
+}
+document.addEventListener("click", e => { const b = e.target.closest("[data-hide]"); if (!b) return; const h = store.get("jnm_ann_hidden", []); h.push(b.dataset.hide); store.set("jnm_ann_hidden", h); b.closest(".promo")?.remove(); });
+
+async function ownerPromote(){
+  const body = $("#aBody"); body.innerHTML = `<section class="sec"><div class="empty">Loading…</div></section>`;
+  let pr; try { pr = await api.ownerPromos(); } catch(e){ body.innerHTML = `<div class="need err" style="margin-top:18px">Couldn't load: ${esc(e.message)}</div>`; return; }
+  const now = new Date().toISOString(), tl = k => (state.tiers.find(t => t.key === k) || {}).label || k;
+  body.innerHTML = `
+    <section class="sec"><div class="sec-h"><span>📣 Announcements</span><button class="btn sm" id="newAnn">New</button></div>
+      <div class="sec-b">${pr.anns.length ? pr.anns.map(a => `<div class="promo-row"><div><b>${esc(a.title)}</b><div class="small muted">${esc(a.body)}</div><div class="small muted" style="margin-top:4px">Sent ${fmtDate(a.created_at)} · ${a.expires_at > now ? `Banner until ${fmtDate(a.expires_at)}` : "Banner ended"}</div></div>${a.expires_at > now ? `<button class="linkbtn" data-end-ann="${a.id}">End banner</button>` : ""}</div>`).join("") : `<p class="small muted" style="margin:0">Send a message to every approved partner: a phone notification, a bell alert, and a banner in the app.</p>`}</div></section>
+    <section class="sec"><div class="sec-h"><span>🔥 Payout boosts</span><button class="btn sm" id="newBoost">New</button></div>
+      <div class="sec-b">${pr.boosts.length ? pr.boosts.map(b => { const live = b.starts_at <= now && b.ends_at > now; return `<div class="promo-row"><div><b>${esc(tl(b.project_type))} +${money(b.extra)}</b>${b.headline ? ` <span class="small muted">· ${esc(b.headline)}</span>` : ""}<div class="small muted" style="margin-top:4px">${live ? `Active until ${fmtDate(b.ends_at)}` : b.ends_at <= now ? `Ended ${fmtDate(b.ends_at)}` : `Starts ${fmtDate(b.starts_at)}`}</div></div>${live ? `<button class="linkbtn" data-end-boost="${b.id}">End now</button>` : ""}</div>`; }).join("") : `<p class="small muted" style="margin:0">Temporarily raise a payout for one project type. Referrals sent during the boost lock in the higher amount.</p>`}</div></section>
+    <div id="basePayouts"></div>`;
+  $("#newAnn").onclick = () => openEdit({ title:"New announcement", intro:"Goes to every approved partner as a notification and bell alert, plus a banner in the app until the end date.", fields:[
+      { key:"title", label:"Title", value:"" }, { key:"body", label:"Message", type:"textarea", value:"" },
+      { key:"title_es", label:"Spanish title (optional)", value:"" }, { key:"body_es", label:"Spanish message (optional)", type:"textarea", value:"", hint:"Spanish-speaking partners see this version. If blank, they get the English one." },
+      { key:"until", label:"Show banner until", type:"date", value:new Date(Date.now() + 7*864e5).toISOString().slice(0,10), min:new Date().toISOString().slice(0,10) },
+      { key:"email", label:"Also send by email?", type:"select", value:"no", options:[{ value:"no", label:"No, notification and banner only" }, { value:"yes", label:"Yes, email too" }], hint:"Each partner counts as one email toward your Resend limit." } ],
+    validate:v => !v.title ? "Add a title." : !v.body ? "Add a message." : !v.until ? "Pick an end date." : null,
+    onSave:async v => { const n = await api.announce({ title:v.title, body:v.body, title_es:v.title_es || null, body_es:v.body_es || null, expires_at:endOfDay(v.until) }, v.email === "yes"); toast(`Sent to ${n} partner${n === 1 ? "" : "s"}`); },
+    after:() => ownerPromote() });
+  $("#newBoost").onclick = () => openEdit({ title:"New payout boost", fields:[
+      { key:"project", label:"Project type", type:"select", value:state.tiers[0]?.key, options:state.tiers.map(t => ({ value:t.key, label:`${t.label} (now ${money(t.amount)})` })) },
+      { key:"extra", label:"Extra amount ($)", type:"number", value:100, step:25 },
+      { key:"until", label:"Boost ends", type:"date", value:new Date(Date.now() + 14*864e5).toISOString().slice(0,10), min:new Date().toISOString().slice(0,10) },
+      { key:"headline", label:"Headline (optional)", value:"", hint:"e.g. Storm season, Holiday special" },
+      { key:"announce", label:"Announce it to all partners?", type:"select", value:"yes", options:[{ value:"yes", label:"Yes, notification and banner" }, { value:"no", label:"No, banner only" }] } ],
+    validate:v => !(+v.extra > 0) ? "Enter an extra amount above $0." : !v.until ? "Pick an end date." : null,
+    onSave:async v => {
+      const t = state.tiers.find(x => x.key === v.project), ends = endOfDay(v.until), extra = Math.round(+v.extra);
+      await api.addBoost({ project_type:v.project, extra, headline:v.headline || null, ends_at:ends });
+      if (v.announce === "yes"){ const head = v.headline ? v.headline + ": " : "", d = new Date(ends).toLocaleDateString("en-US", { month:"short", day:"numeric" }), dEs = new Date(ends).toLocaleDateString("es-US", { month:"short", day:"numeric" });
+        await api.announce({ title:`🔥 ${head}${t.label} pays ${money(+t.amount + extra)}`, body:`Earn ${money(+t.amount + extra)} (+${money(extra)}) for every ${t.label.toLowerCase()} referral that's installed. Send yours before ${d}.`,
+          title_es:`🔥 ${head}${ES[t.label] || t.label} paga ${money(+t.amount + extra)}`, body_es:`Gana ${money(+t.amount + extra)} (+${money(extra)}) por cada referido de ${(ES[t.label] || t.label).toLowerCase()} que se instale. Envía el tuyo antes del ${dEs}.`, expires_at:new Date().toISOString() }, false); }
+      toast("Boost is live"); },
+    after:() => ownerPromote() });
+  body.querySelectorAll("[data-end-ann]").forEach(b => b.onclick = async () => { try { await api.endAnnouncement(b.dataset.endAnn); toast("Banner ended"); ownerPromote(); } catch(e){ toast("Couldn't update: " + e.message); } });
+  body.querySelectorAll("[data-end-boost]").forEach(b => b.onclick = async () => { if (!confirm("End this boost now?")) return; try { await api.endBoost(b.dataset.endBoost); toast("Boost ended"); ownerPromote(); } catch(e){ toast("Couldn't update: " + e.message); } });
+  ownerPayouts($("#basePayouts"));
+}
+
 /* ---------- leaderboard ---------- */
 const LB_POINTS = { sent:1, appt:2, installed:5 };
 function monthStart(offset){ const d = new Date(); return new Date(d.getFullYear(), d.getMonth() + offset, 1).toISOString(); }
@@ -1093,6 +1202,8 @@ function openEdit(cfg){
   body.innerHTML = (cfg.intro ? `<p class="small muted" style="margin:0 0 14px">${esc(cfg.intro)}</p>` : "") + cfg.fields.map(f => `<div class="field${f.hide ? " hidden" : ""}" data-fk="${f.key}"><label class="l" for="ef_${f.key}">${esc(f.label)}</label>${
       f.type === "select" ? `<select class="in" id="ef_${f.key}">${f.options.map(o => `<option value="${esc(o.value)}"${o.value === f.value ? " selected" : ""}>${esc(o.label)}</option>`).join("")}</select>`
       : f.type === "textarea" ? `<textarea class="in" id="ef_${f.key}">${esc(f.value || "")}</textarea>`
+      : f.type === "date" ? `<input class="in" id="ef_${f.key}" type="date" value="${esc(f.value || "")}"${f.min ? ` min="${f.min}"` : ""}>`
+      : f.type === "number" ? `<input class="in" id="ef_${f.key}" type="number" inputmode="numeric" min="0" step="${f.step || 1}" value="${esc(f.value ?? "")}">` 
       : `<input class="in" id="ef_${f.key}" type="${f.type === "tel" ? "tel" : f.type === "email" ? "email" : "text"}"${f.type === "tel" ? ' inputmode="tel"' : ""}${f.readonly ? " readonly" : ""} value="${esc(f.type === "tel" ? fmtPhone(f.value || "") : (f.value || ""))}">`
     }${f.hint ? `<div class="small muted" style="margin-top:6px">${esc(f.hint)}</div>` : ""}</div>`).join("")
     + `<div class="need err hidden" id="editErr"></div><button class="btn" id="editSave">Save changes</button>`;
@@ -1155,9 +1266,11 @@ function ownerEditReferral(r){
     { key:"phone", label:"Client phone", type:"tel", value:r.client_phone },
     { key:"address", label:"Project address", value:r.client_address },
     { key:"project", label:"Project type", type:"select", value:r.project_type, options:tierOptions(), hint:"Changing the project type resets the payout to that type's amount. You can still adjust the payout on the card." },
+    { key:"email", label:"Client email", type:"email", value:r.client_email || "" },
     { key:"notes", label:"Notes", type:"textarea", value:r.notes || "" }
   ], validate:checkReferralFields, onSave:v => {
-      const patch = { client_name:v.name, client_phone:normPhone(v.phone), client_address:v.address, notes:v.notes || null, project_type:v.project };
+      if (v.email && !validEmail(v.email)) throw new Error("Enter a valid email address.");
+      const patch = { client_name:v.name, client_phone:normPhone(v.phone), client_address:v.address, notes:v.notes || null, project_type:v.project, client_email:v.email ? v.email.toLowerCase() : null };
       if (v.project !== r.project_type){ const t = state.tiers.find(x => x.key === v.project); if (t) patch.payout = +t.amount; }
       return api.updateReferral(r.id, patch);
     }, after:() => viewOwner() });
@@ -1351,17 +1464,18 @@ function pendingBanner(){
 function viewRefer(){
   const me = state.me;
   const t = state.tiers.find(x => x.key === state.project);
-  setEarn(t ? "You earn" : "Earn up to", money(t ? t.amount : maxTier()));
+  setEarn(t ? "You earn" : "Earn up to", money(t ? effAmt(t) : maxTier()));
   const app = clearApp();
   app.innerHTML = `
     ${demoBanner("Demo mode: referrals are saved on this device only.")}
     ${pendingBanner()}
+    ${promoBanners()}
     ${showHomeTip(true)}
     ${notifCard("partner")}
     <section class="sec">
       <div class="sec-h"><span><span class="n">1</span>Project type</span><span class="aside">Payout when it closes</span></div>
       <div class="sec-b"><div class="opts" id="projOpts">
-        ${state.tiers.map(x => `<button type="button" class="opt" data-k="${x.key}" aria-pressed="${x.key===state.project}"><b>${esc(x.label)}</b><span>${money(x.amount)}</span></button>`).join("")}
+        ${state.tiers.map(x => `<button type="button" class="opt" data-k="${x.key}" aria-pressed="${x.key===state.project}"><b>${esc(x.label)}</b><span>${tierPrice(x)}</span></button>`).join("")}
       </div></div>
     </section>
     <section class="sec">
@@ -1369,6 +1483,9 @@ function viewRefer(){
       <div class="sec-b">
         <div class="field"><label class="l" for="cName">Client name</label><input class="in" id="cName" autocomplete="off" placeholder="First and last name"></div>
         <div class="field"><label class="l" for="cPhone">Client phone</label><input class="in" id="cPhone" type="tel" inputmode="tel" autocomplete="off" placeholder="(305) 555-0123"></div>
+        <div class="field"><label class="l" for="cEmail">Client email (optional)</label><input class="in" id="cEmail" type="email" inputmode="email" autocomplete="off" placeholder="name@email.com">
+          <div class="small muted" style="margin-top:6px">We'll send them a quick note that you referred them, so they expect our call.</div></div>
+        <div class="field"><span class="l">Client's language</span><div class="opts" id="cLang">${[["en","English"],["es","Español"]].map(([k,v]) => `<button type="button" class="opt slim" data-cl="${k}" aria-pressed="${k===LANG}"><b>${v}</b></button>`).join("")}</div></div>
         <div class="field"><label class="l" for="cAddr">Project address</label><input class="in" id="cAddr" autocomplete="off" placeholder="Street, city, ZIP"></div>
         <div class="field"><label class="l" for="cNotes">Notes (optional)</label><textarea class="in" id="cNotes" placeholder="Best time to call, what they mentioned, etc."></textarea></div>
         <label class="tog"><input type="checkbox" id="cConsent"><span class="sw"></span><span class="t">They're expecting our call<small>The client agreed to be contacted by JNM.</small></span></label>
@@ -1378,16 +1495,18 @@ function viewRefer(){
     <button class="btn" id="send" disabled>Send referral</button>
     <div class="sending-as small" style="margin-top:16px"><span class="muted">Signed in as ${esc(me.name)} · ${esc(me.partner_type)}</span><span style="display:flex;gap:14px"><button class="linkbtn" id="editMe">Edit my info</button><button class="linkbtn" id="lo">Sign out</button></span></div>
     ${footer()}`;
-  liveFormat($("#cPhone")); wireHomeTip(); wireNotif("partner"); syncPush();
+  liveFormat($("#cPhone")); wireHomeTip();
+  $("#cLang").onclick = e => { const b = e.target.closest("[data-cl]"); if (!b) return; $("#cLang").querySelectorAll("[data-cl]").forEach(x => x.setAttribute("aria-pressed", x === b)); }; wireNotif("partner"); syncPush();
   $("#lo").onclick = async () => { await api.signOut("partner"); state.project = null; render(); };
   $("#editMe").onclick = editMyProfile;
   $("#projOpts").onclick = e => { const b = e.target.closest(".opt"); if (!b) return; state.project = b.dataset.k;
     app.querySelectorAll("#projOpts .opt").forEach(x => x.setAttribute("aria-pressed", x === b));
-    setEarn("You earn", money(state.tiers.find(x => x.key === state.project).amount), true); check(); };
+    setEarn("You earn", money(effAmt(state.tiers.find(x => x.key === state.project))), true); check(); };
   const missing = () => { const m = [];
     if (!state.project) m.push("Project type");
     if ($("#cName").value.trim().length < 2) m.push("Client name");
     if (!validPhone($("#cPhone").value)) m.push("Client phone");
+    if ($("#cEmail").value.trim() && !validEmail($("#cEmail").value)) m.push("Client email");
     if ($("#cAddr").value.trim().length < 6) m.push("Address");
     if (!$("#cConsent").checked) m.push("Client OK to contact");
     return m; };
@@ -1395,7 +1514,8 @@ function viewRefer(){
   app.oninput = check; app.onchange = check; check();
   $("#send").onclick = async () => {
     const btn = $("#send"); btn.disabled = true; btn.textContent = "Sending…";
-    const r = { project:state.project, name:$("#cName").value.trim(), phone:$("#cPhone").value, address:$("#cAddr").value.trim(), notes:$("#cNotes").value.trim() };
+    const r = { project:state.project, name:$("#cName").value.trim(), phone:$("#cPhone").value, address:$("#cAddr").value.trim(), notes:$("#cNotes").value.trim(),
+      email:$("#cEmail").value.trim().toLowerCase(), clientLang:(app.querySelector("#cLang [aria-pressed='true']") || {}).dataset?.cl || LANG };
     try {
       const amount = await api.submitReferral(r);
       const tier = state.tiers.find(t => t.key === r.project);
@@ -1540,7 +1660,7 @@ function viewHow(){
     </section>
     <section class="sec">
       <div class="sec-h"><span>Payouts</span><span class="aside">Per installed job</span></div>
-      <div class="sec-b">${state.tiers.map(t => `<div class="tier"><span>${esc(t.label)}</span><b>${money(t.amount)}</b></div>`).join("")}</div>
+      <div class="sec-b">${state.tiers.map(t => `<div class="tier"><span>${esc(t.label)}</span><b>${tierPrice(t)}</b></div>`).join("")}</div>
     </section>
     <section class="sec">
       <div class="sec-h"><span>Who can join</span></div>
@@ -1590,7 +1710,7 @@ async function viewOwner(){
       <div class="stat"><small>Partners</small><b>${ps.filter(p => p.status === "approved").length}</b></div>
     </div>
     <div class="opts four" style="margin-top:18px" id="aTabs">
-      ${[["referrals","Referrals",newCount],["partners","Partners",pendingPartners + setupCount],["leaders","Leaders",0],["payouts","Payouts",0]].map(([k,v,c]) => `<button class="opt slim" data-a="${k}" aria-pressed="${at===k}"><b>${v}${c ? ` <span class="count">${c}</span>` : ""}</b></button>`).join("")}
+      ${[["referrals","Referrals",newCount],["partners","Partners",pendingPartners + setupCount],["leaders","Leaders",0],["payouts","Promote",0]].map(([k,v,c]) => `<button class="opt slim" data-a="${k}" aria-pressed="${at===k}"><b>${v}${c ? ` <span class="count">${c}</span>` : ""}</b></button>`).join("")}
     </div>
     <div id="aBody"></div>
     <div class="foot" style="display:flex;justify-content:center;gap:18px;flex-wrap:wrap">
@@ -1603,7 +1723,7 @@ async function viewOwner(){
   $("#csv").onclick = () => exportCSV(refs, ps);
   if (at === "referrals") ownerReferrals(refs, ps);
   if (at === "partners") ownerPartners(ps, refs);
-  if (at === "payouts") ownerPayouts();
+  if (at === "payouts") ownerPromote();
   if (at === "leaders") ownerLeaders();
 }
 
@@ -1651,6 +1771,7 @@ function ownerReferrals(refs, ps){
           </div>
           <dl class="kv">
             <dt>Phone</dt><dd><a href="tel:${digits(r.client_phone)}">${esc(fmtPhone(r.client_phone))}</a></dd>
+            ${r.client_email ? `<dt>Email</dt><dd><a href="mailto:${esc(r.client_email)}">${esc(r.client_email)}</a>${r.client_lang === "es" ? " · Spanish" : ""}</dd>` : (r.client_lang === "es" ? `<dt>Language</dt><dd>Spanish</dd>` : "")}
             <dt>Address</dt><dd><a href="https://maps.google.com/?q=${encodeURIComponent(r.client_address)}" target="_blank" rel="noopener">${esc(r.client_address)}</a></dd>
             ${r.notes ? `<dt>Notes</dt><dd>${esc(r.notes)}</dd>` : ""}
             <dt>From</dt><dd>${esc(p.name)} · ${esc(p.partner_type)}${p.lang === "es" ? " · Spanish" : ""}${p.brokerage ? " · " + esc(p.brokerage) : ""}${p.company ? " · " + esc(p.company) : ""}${partnerBadge(p.status)}<br><a href="tel:${digits(p.phone)}">${esc(fmtPhone(p.phone))}</a>${p.email ? ` · <a href="mailto:${esc(p.email)}">${esc(p.email)}</a>` : ""}</dd>
@@ -1806,15 +1927,16 @@ function notifyRow(p){
     <div style="display:flex;gap:16px;margin-top:8px"><a href="sms:${digits(p.phone)}?&body=${encodeURIComponent(msg)}">Text them</a><a href="mailto:${esc(p.email)}?subject=${encodeURIComponent(es ? "Ya estás aprobado: Socio de Referidos JNM" : "You're approved: JNM Referral Partner")}&body=${encodeURIComponent(msg)}">Email them</a></div></div>`;
 }
 
-function ownerPayouts(){
-  $("#aBody").innerHTML = `<section class="sec"><div class="sec-h"><span>Payout per project type</span><span class="aside">Partners see these</span></div>
+function ownerPayouts(target){
+  const box = target || $("#aBody");
+  box.innerHTML = `<section class="sec"><div class="sec-h"><span>Payout per project type</span><span class="aside">Partners see these</span></div>
     <div class="sec-b">${state.tiers.map(t => `<div class="tier" style="align-items:center"><span>${esc(t.label)}</span><span style="display:flex;align-items:center;gap:6px">$<input class="in" style="width:100px;padding:8px 10px;font-size:15px" type="number" min="0" step="25" value="${+t.amount}" data-k="${t.key}"></span></div>`).join("")}
     <p class="small muted" style="margin:14px 0 0">Changes apply to new referrals. Existing referrals keep the payout they were sent with, and you can adjust any one of them on its card.</p></div></section>
     <section class="sec"><div class="sec-h"><span>Recruiter bonus</span><span class="aside">One level only</span></div>
     <div class="sec-b"><div class="tier" style="align-items:center"><span>Per installed job from a recruited partner</span><span style="display:flex;align-items:center;gap:6px">$<input class="in" style="width:100px;padding:8px 10px;font-size:15px" type="number" min="0" step="5" value="${+state.bonus}" id="bonusIn"></span></div>
     <p class="small muted" style="margin:14px 0 0">Paid to the partner who invited them, on top of the referral payout. Applies to new referrals.</p></div></section>`;
   $("#bonusIn").onchange = async () => { const v = Math.max(0, +$("#bonusIn").value || 0); try { await api.saveBonus(v); state.bonus = v; toast("Recruiter bonus updated"); } catch(e){ toast("Couldn't save: " + e.message); } };
-  $("#aBody").querySelectorAll("[data-k]").forEach(inp => inp.onchange = async () => {
+  box.querySelectorAll("input[data-k]").forEach(inp => inp.onchange = async () => {
     const v = Math.max(0, +inp.value || 0);
     try { await api.saveTier(inp.dataset.k, v); state.tiers.find(t => t.key === inp.dataset.k).amount = v; toast("Payout updated"); } catch(e){ toast("Couldn't save: " + e.message); }
   });
@@ -1837,6 +1959,7 @@ document.addEventListener("keydown", e => { if (e.key === "Escape"){ closeFeed()
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && bellRole) refreshBell(bellRole); });
 (async function(){
   try { const t = await api.tiers(); if (t && t.length) state.tiers = t; } catch(e){ console.warn("Using default payouts", e); }
+  await loadPromos(); state.promosLoaded = Date.now();
   try { const st = await api.settings(); if (st && st.recruiter_bonus != null) state.bonus = +st.recruiter_bonus; if (st && st.vapid_public_key) state.vapid = st.vapid_public_key; } catch(e){ console.warn("Using default bonus", e); }
   render();
   if (LIVE) setInterval(() => { if (route() === "owner" && document.visibilityState === "visible" && !document.activeElement?.matches("input,textarea")) viewOwner(); }, 60000);
