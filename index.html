@@ -410,6 +410,26 @@ input.in, select.in, textarea.in{ background:rgba(18,27,33,.9); transition:borde
 .small-tog{ padding:0; } .small-tog .sw{ width:40px; height:24px; } .small-tog .sw::after{ width:16px; height:16px; } .small-tog input:checked + .sw::after{ transform:translateX(16px); }
 .small-tog .t{ font-size:14px; }
 .pnotes{ margin-top:12px; padding:10px 12px; background:rgba(14,181,211,.07); border-left:2px solid var(--cyan); }
+.opts.four{ grid-template-columns:repeat(4,1fr); }
+.opts.four .opt.slim b{ font-size:13.5px; }
+.lb-key{ display:flex; flex-wrap:wrap; gap:6px 14px; padding:12px 18px 4px; font-size:13.5px; color:var(--muted); }
+.lb-key b{ font-family:var(--sans); color:var(--cyan); }
+.lb{ padding:8px 10px 12px; }
+.lb-row{ display:grid; grid-template-columns:38px 1fr auto; align-items:center; gap:10px; padding:12px 10px; border-top:1px solid var(--line-soft); }
+.lb-row:first-child{ border-top:0; }
+.lb-rank{ font-family:var(--sans); font-weight:700; font-size:18px; color:var(--muted); text-align:center; }
+.lb-name{ font-family:var(--sans); font-weight:600; font-size:16px; overflow-wrap:anywhere; }
+.lb-pts{ font-family:var(--sans); font-weight:700; font-size:18px; }
+.lb-pts small{ font-size:12px; color:var(--muted); font-weight:500; }
+.lb-badge{ font-family:var(--mono); font-size:11.5px; font-weight:600; color:#f5c451; margin-left:4px; white-space:nowrap; }
+.lb-you{ font-family:var(--mono); font-size:11.5px; font-weight:700; color:var(--ink); background:var(--cyan); padding:1px 6px; margin-left:4px; }
+.lb-row.top1{ background:linear-gradient(90deg, rgba(14,181,211,.28), rgba(42,107,220,.10) 70%, transparent); }
+.lb-row.top1 .lb-rank, .lb-row.top1 .lb-pts{ color:#fff; }
+.lb-row.top2 .lb-rank, .lb-row.top3 .lb-rank{ color:var(--cyan); }
+.lb-row.me{ outline:1px solid rgba(14,181,211,.6); outline-offset:-1px; }
+.lb-row.lb-open .lb-name{ font-family:var(--mono); font-weight:500; font-size:14px; color:var(--muted); }
+.lb-row.lb-open .lb-rank{ opacity:.5; }
+.lb-spot{ margin-top:14px; padding:14px 16px; background:var(--field); border-left:3px solid var(--cyan); font-size:15px; }
 </style>
 </head>
 <body>
@@ -608,6 +628,18 @@ const api = {
       demoDB.save(db); return; }
     await rpc("update_my_referral", { p_id:id, p_client_name:v.name, p_client_phone:normPhone(v.phone), p_client_address:v.address, p_notes:v.notes || "", p_project:v.project });
   },
+  async leaderboard(period){
+    if (!LIVE) return demoBoard(period);
+    return rpc("leaderboard", { p_period:period });
+  },
+  async lbHidden(){
+    if (!LIVE){ const db = demoDB.load(); const e = store.get(demoSess("partner"), null); return !!(db.partners.find(x => x.email === e) || {}).lb_hidden; }
+    try { return !!(await rpc("my_lb_hidden")); } catch(e){ return false; }
+  },
+  async setLbHidden(h){
+    if (!LIVE){ const db = demoDB.load(); const e = store.get(demoSess("partner"), null); const p = db.partners.find(x => x.email === e); if (p) p.lb_hidden = h; demoDB.save(db); return; }
+    await rpc("set_my_lb_hidden", { p_hidden:h });
+  },
   async remindersOff(){
     if (!LIVE){ const db = demoDB.load(); const e = store.get(demoSess("partner"), null); return !!(db.partners.find(x => x.email === e) || {}).reminders_off; }
     try { return !!(await rpc("my_reminders_off")); } catch(e){ return false; }
@@ -705,7 +737,7 @@ async function notifyOwner(payload){
 const state = { tiers: DEFAULT_TIERS, me: null, project: null, adminFilter: "new", adminTab: "referrals", partnerFilter: null, justApproved: null, bonus: DEFAULT_BONUS };
 (function(){ const r = new URLSearchParams(location.search).get("ref"); if (r) store.set("jnm_ref", r.trim().toUpperCase()); })();
 const inviteLink = () => appLink() + "?ref=" + encodeURIComponent(state.me?.code || "");
-const VIEWS = { refer:"Refer", mine:"My referrals", invite:"Invite & earn", how:"How it works" };
+const VIEWS = { refer:"Refer", mine:"My referrals", invite:"Invite & earn", leaders:"Leaderboard", how:"How it works" };
 function route(){ const h = location.hash.replace("#",""); return h === "owner" ? "owner" : (VIEWS[h] ? h : "refer"); }
 function go(v){ if (location.hash.replace("#","") === v) render(); else location.hash = v; }
 window.addEventListener("hashchange", render);
@@ -747,6 +779,7 @@ async function render(){
   if (!state.langSynced){ state.langSynced = true; api.setLang(LANG); }
   if (v === "mine") return viewMine();
   if (v === "invite") return viewInvite();
+  if (v === "leaders") return viewLeaders();
   refreshUnseen();
   return viewRefer();
 }
@@ -825,7 +858,13 @@ const ES = {
   "Your partner account is not active":"Tu cuenta de socio no está activa", "Name and a 10-digit phone are required":"Se requieren el nombre y un teléfono de 10 dígitos",
   "Choose an account type":"Elige un tipo de cuenta", "Brokerage is required for realtors":"La agencia es obligatoria para agentes de bienes raíces",
   "That phone number is already on another partner account":"Ese número de teléfono ya está en otra cuenta de socio",
-  "Notes from JNM":"Notas de JNM", "Friendly reminders":"Recordatorios amistosos", "On":"Activados", "Off":"Desactivados",
+  "Notes from JNM":"Notas de JNM", "Leaderboard":"Clasificación", "This month":"Este mes", "All-time":"Histórico", "Your points":"Tus puntos",
+  "Resets on the 1st":"Se reinicia el día 1", "Since launch":"Desde el inicio", "referral sent":"referido enviado", "appointment set":"cita programada", "job installed":"trabajo instalado",
+  "This spot could be yours. Send a referral to claim it.":"Este lugar podría ser tuyo. Envía un referido para ganarlo.", "★ Founding":"★ Fundador", "You":"Tú", "pts":"pts",
+  "You're hidden from the leaderboard. You can change this in Edit my info.":"Estás oculto en la clasificación. Puedes cambiarlo en Editar mis datos.",
+  "You'll appear on the leaderboard once your account is approved.":"Aparecerás en la clasificación cuando tu cuenta sea aprobada.",
+  "Send your first referral to get on the board.":"Envía tu primer referido para entrar en la clasificación.", "You're #1! Keep it up.":"¡Eres el #1! Sigue así.",
+  "Show me on the leaderboard":"Mostrarme en la clasificación", "Only your first name and last initial are shown.":"Solo se muestra tu nombre y la inicial de tu apellido.", "Friendly reminders":"Recordatorios amistosos", "On":"Activados", "Off":"Desactivados",
   "A short monthly nudge if you haven't sent a referral in a while.":"Un aviso breve al mes si no has enviado un referido en un tiempo.",
   "Edit my info":"Editar mis datos", "Edit details":"Editar datos", "Edit referral":"Editar referido", "Save changes":"Guardar cambios", "Saving…":"Guardando…", "Changes saved":"Cambios guardados",
   "You can change these details until our team contacts your client.":"Puedes cambiar estos datos hasta que nuestro equipo contacte a tu cliente.",
@@ -846,6 +885,7 @@ const ES_RX = [
   [/^We sent a code to (.+)\. Check spam if you don't see it in a minute\.$/, (m, e) => `Enviamos un código a ${e}. Si no lo ves en un minuto, revisa tu carpeta de spam.`],
   [/^Couldn't send the code: (.+)$/, (m, e) => "No se pudo enviar el código: " + trWord(e)],
   [/^Couldn't send: (.+?)\. Your info is still here, try again\.$/, (m, e) => `No se pudo enviar: ${trWord(e)}. Tu información sigue aquí, inténtalo de nuevo.`],
+  [/^You're #(\d+) with (\d+) pts\.(?: (\d+) pts to pass #(\d+)\.)?$/, (m, a, b, c, d) => `Estás en el #${a} con ${b} pts.` + (c ? ` Te faltan ${c} pts para pasar al #${d}.` : "")],
   [/^See all notes \((\d+)\)$/, (m, n) => `Ver todas las notas (${n})`],
   [/^Couldn't save: (.+)$/, (m, e) => "No se pudo guardar: " + trWord(e)],
   [/^Couldn't submit: (.+)$/, (m, e) => "No se pudo enviar la solicitud: " + trWord(e)],
@@ -974,6 +1014,68 @@ function wireNotif(role){
     } catch(e){ console.error(e); b.disabled = false; b.textContent = "Turn on notifications"; toast("Couldn't turn on notifications: " + e.message); }
   };
 }
+/* ---------- leaderboard ---------- */
+const LB_POINTS = { sent:1, appt:2, installed:5 };
+function monthStart(offset){ const d = new Date(); return new Date(d.getFullYear(), d.getMonth() + offset, 1).toISOString(); }
+function demoBoard(period){
+  const db = demoDB.load(); const me = store.get(demoSess("partner"), null); const owner = location.hash.replace("#","") === "owner";
+  const s = period === "month" ? monthStart(0) : period === "last_month" ? monthStart(-1) : "0000", e = period === "last_month" ? monthStart(0) : "9999";
+  const inP = t => t && t >= s && t < e;
+  const approved = db.partners.filter(p => p.status === "approved");
+  const founders = approved.slice().sort((a,b) => (a.decided_at || a.created_at).localeCompare(b.decided_at || b.created_at)).slice(0,25).map(p => p.id);
+  const rows = approved.filter(p => !p.lb_hidden).map(p => {
+    let pts = 0; db.referrals.filter(r => r.partner_id === p.id).forEach(r => {
+      if (inP(r.created_at)) pts += LB_POINTS.sent;
+      if (inP(r.appointment_at || r.signed_at || r.installed_at || r.paid_at)) pts += LB_POINTS.appt;
+      if (inP(r.installed_at || r.paid_at)) pts += LB_POINTS.installed; });
+    const parts = p.name.split(" "); return { name: owner ? p.name : parts[0] + (parts[1] ? " " + parts[1][0] + "." : ""), points:pts, founding:founders.includes(p.id), is_me:p.email === me };
+  }).filter(r => r.points > 0).sort((a,b) => b.points - a.points);
+  let last = null, rk = 0; rows.forEach((r,i) => { if (r.points !== last){ rk = i + 1; last = r.points; } r.rank = rk; });
+  return rows.filter(r => r.rank <= 20 || r.is_me);
+}
+function boardRows(rows, slots, mine){
+  const top = rows.filter(r => r.rank <= 20);
+  let html = top.map(r => `<div class="lb-row${r.is_me ? " me" : ""}${r.rank <= 3 ? " top" + r.rank : ""}"><span class="lb-rank">${r.rank}</span><span class="lb-name">${esc(r.name)}${r.founding ? ` <span class="lb-badge" title="Founding Partner">★ Founding</span>` : ""}${r.is_me ? ` <span class="lb-you">You</span>` : ""}</span><span class="lb-pts">${r.points}<small> pts</small></span></div>`).join("");
+  for (let i = top.length; i < slots; i++) html += `<div class="lb-row lb-open"><span class="lb-rank">${i + 1}</span><span class="lb-name muted">This spot could be yours. Send a referral to claim it.</span></div>`;
+  return html;
+}
+async function viewLeaders(){
+  const app = clearApp(); const period = state.lbPeriod || "month";
+  app.innerHTML = `<section class="sec"><div class="empty">Loading…</div></section>`;
+  let rows = [], hidden = false;
+  try { [rows, hidden] = await Promise.all([api.leaderboard(period), api.lbHidden()]); } catch(e){ return loadError(e); }
+  const me = rows.find(r => r.is_me), top = rows.filter(r => r.rank <= 20);
+  setEarn("Your points", String(me ? me.points : 0));
+  let spot;
+  if (hidden) spot = `You're hidden from the leaderboard. You can change this in Edit my info.`;
+  else if (state.me.status !== "approved") spot = `You'll appear on the leaderboard once your account is approved.`;
+  else if (!me) spot = `Send your first referral to get on the board.`;
+  else if (me.rank === 1) spot = `You're #1! Keep it up.`;
+  else { const ahead = rows.filter(r => r.rank < me.rank).pop(); spot = `You're #${me.rank} with ${me.points} pts.` + (ahead ? ` ${ahead.points - me.points + 1} pts to pass #${ahead.rank}.` : ""); }
+  app.innerHTML = `
+    <div class="opts" id="lbTabs" style="margin-top:18px">${[["month","This month"],["all","All-time"]].map(([k,v]) => `<button class="opt slim" data-p="${k}" aria-pressed="${period===k}"><b>${v}</b></button>`).join("")}</div>
+    <section class="sec">
+      <div class="sec-h"><span>Leaderboard</span><span class="aside">${period === "month" ? "Resets on the 1st" : "Since launch"}</span></div>
+      <div class="lb-key"><span><b>+1</b> referral sent</span><span><b>+2</b> appointment set</span><span><b>+5</b> job installed</span></div>
+      <div class="lb">${boardRows(rows, Math.max(5, top.length))}</div>
+    </section>
+    <div class="lb-spot${me ? " has" : ""}">${spot}</div>
+    <button class="btn" onclick="go('refer')">Send a referral</button>${langBar()}`;
+  $("#lbTabs").onclick = e => { const b = e.target.closest("[data-p]"); if (!b) return; state.lbPeriod = b.dataset.p; viewLeaders(); };
+}
+async function ownerLeaders(){
+  const body = $("#aBody"); const period = state.ownerLbPeriod || "month";
+  body.innerHTML = `<section class="sec"><div class="empty">Loading…</div></section>`;
+  let rows = []; try { rows = await api.leaderboard(period); } catch(e){ body.innerHTML = `<div class="need err" style="margin-top:18px">Couldn't load the leaderboard: ${esc(e.message)}</div>`; return; }
+  body.innerHTML = `<section class="sec">
+    <div class="filters" id="olb">${[["month","This month"],["last_month","Last month"],["all","All-time"]].map(([k,v]) => `<button class="chip" data-p="${k}" aria-pressed="${period===k}">${v}</button>`).join("")}</div>
+    <div class="lb-key" style="margin-top:10px"><span><b>+1</b> sent</span><span><b>+2</b> appointment</span><span><b>+5</b> installed</span></div>
+    <div class="lb">${rows.length ? boardRows(rows, rows.length) : `<div class="empty">No points ${period === "all" ? "yet" : "for this month"}.</div>`}</div>
+    ${period === "last_month" && rows[0] ? `<div class="need ok" style="margin:0 16px 16px">Last month's winner: <b>${esc(rows[0].name)}</b> with ${rows[0].points} pts.</div>` : ""}
+  </section>`;
+  $("#olb").onclick = e => { const b = e.target.closest("[data-p]"); if (!b) return; state.ownerLbPeriod = b.dataset.p; ownerLeaders(); };
+}
+
 /* ---------- change history (owner view) ---------- */
 const FIELD_LABEL = { name:"Name", phone:"Phone", address:"Address", notes:"Notes", project:"Project type", partner_type:"Account type", brokerage:"Brokerage", company:"Company" };
 function fmtVal(k, v){ if (v == null || v === "") return "(blank)"; if (k === "phone") return fmtPhone(v); if (k === "project") return (state.tiers.find(t => t.key === v) || {}).label || v; return v; }
@@ -1024,7 +1126,7 @@ function checkReferralFields(v){
   return null;
 }
 async function editMyProfile(){
-  const me = state.me; const wasOff = await api.remindersOff();
+  const me = state.me; const [wasOff, wasHidden] = await Promise.all([api.remindersOff(), api.lbHidden()]);
   openEdit({ title:"Edit my info", fields:[
     { key:"name", label:"Full name", value:me.name },
     { key:"phone", label:"Phone", type:"tel", value:me.phone },
@@ -1032,9 +1134,10 @@ async function editMyProfile(){
     { key:"brokerage", label:"Brokerage", value:me.brokerage || "" },
     { key:"company", label:"Company or trade", value:me.company || "" },
     { key:"email", label:"Email", value:me.email, readonly:true, hint:"To change your sign-in email, contact JNM." },
+    { key:"leaderboard", label:"Show me on the leaderboard", type:"select", value:wasHidden ? "off" : "on", options:[{ value:"on", label:"On" }, { value:"off", label:"Off" }], hint:"Only your first name and last initial are shown." },
     { key:"reminders", label:"Friendly reminders", type:"select", value:wasOff ? "off" : "on", options:[{ value:"on", label:"On" }, { value:"off", label:"Off" }], hint:"A short monthly nudge if you haven't sent a referral in a while." }
   ], onChange:toggleTypeFields, validate:v => checkPartnerFields({ ...v, email:undefined }),
-     onSave:async v => { await api.updateProfile(v); if ((v.reminders === "off") !== wasOff) await api.setReminders(v.reminders === "off"); Object.assign(state.me, { name:v.name, phone:normPhone(v.phone), partner_type:v.type, brokerage:v.brokerage, company:v.company }); },
+     onSave:async v => { await api.updateProfile(v); if ((v.reminders === "off") !== wasOff) await api.setReminders(v.reminders === "off"); if ((v.leaderboard === "off") !== wasHidden) await api.setLbHidden(v.leaderboard === "off"); Object.assign(state.me, { name:v.name, phone:normPhone(v.phone), partner_type:v.type, brokerage:v.brokerage, company:v.company }); },
      after:() => render() });
 }
 function editMyReferral(r){
@@ -1486,8 +1589,8 @@ async function viewOwner(){
       <div class="stat"><small>Signed</small><b>${closed}</b></div>
       <div class="stat"><small>Partners</small><b>${ps.filter(p => p.status === "approved").length}</b></div>
     </div>
-    <div class="opts three" style="margin-top:18px" id="aTabs">
-      ${[["referrals","Referrals",newCount],["partners","Partners",pendingPartners + setupCount],["payouts","Payouts",0]].map(([k,v,c]) => `<button class="opt slim" data-a="${k}" aria-pressed="${at===k}"><b>${v}${c ? ` <span class="count">${c}</span>` : ""}</b></button>`).join("")}
+    <div class="opts four" style="margin-top:18px" id="aTabs">
+      ${[["referrals","Referrals",newCount],["partners","Partners",pendingPartners + setupCount],["leaders","Leaders",0],["payouts","Payouts",0]].map(([k,v,c]) => `<button class="opt slim" data-a="${k}" aria-pressed="${at===k}"><b>${v}${c ? ` <span class="count">${c}</span>` : ""}</b></button>`).join("")}
     </div>
     <div id="aBody"></div>
     <div class="foot" style="display:flex;justify-content:center;gap:18px;flex-wrap:wrap">
@@ -1501,6 +1604,7 @@ async function viewOwner(){
   if (at === "referrals") ownerReferrals(refs, ps);
   if (at === "partners") ownerPartners(ps, refs);
   if (at === "payouts") ownerPayouts();
+  if (at === "leaders") ownerLeaders();
 }
 
 const MONEY_STAGES = ["installed","paid"];
