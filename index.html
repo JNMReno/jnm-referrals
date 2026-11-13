@@ -1998,6 +1998,13 @@ const api = {
     await rpc("set_my_reminders", { p_off:off });
   },
   async setLang(l){ if (!LIVE) return; try { await rpc("set_my_lang", { p_lang:l }); } catch(e){ console.warn("lang", e); } },
+  async setRecruiter(pid, rid){
+    if (!LIVE){ const db = demoDB.load(); const p = db.partners.find(x => x.id === pid); p.recruited_by = rid;
+      const bonus = db.settings?.recruiter_bonus ?? DEFAULT_BONUS;
+      db.referrals.filter(r => r.partner_id === pid && !r.recruiter_paid_at).forEach(r => { r.recruiter_id = rid; r.recruiter_bonus = rid ? bonus : 0; });
+      demoDB.save(db); return; }
+    await rpc("set_partner_recruiter", { p_partner:pid, p_recruiter:rid });
+  },
   async recruiterName(code){
     if (!code) return null;
     if (!LIVE){ const p = demoDB.load().partners.find(x => x.code === code.toUpperCase() && x.status === "approved"); return p ? p.name.split(" ")[0] : null; }
@@ -2212,7 +2219,7 @@ const ES = {
   "Enter a valid email address.":"Ingresa un correo electrónico válido.", "Enter the full code from the most recent email.":"Ingresa el código completo del correo más reciente.",
   "That code isn't right or has expired. Use the code from the most recent email, or request a new one.":"Ese código no es correcto o ya venció. Usa el código del correo más reciente o pide uno nuevo.",
   "Sending…":"Enviando…", "Checking…":"Verificando…", "Submitting…":"Enviando…", "Turning on…":"Activando…", "Loading…":"Cargando…", "Loading your referrals…":"Cargando tus referidos…", "Try again":"Intentar de nuevo",
-  "About you":"Sobre ti", "Partner application":"Solicitud de socio", "Full name":"Nombre completo", "Phone":"Teléfono", "Not you?":"¿No eres tú?", "I am a":"Soy",
+  "About you":"Sobre ti", "Invite code":"Código de invitación", "(optional)":"(opcional)", "Did someone invite you? Enter their code so they get credit.":"¿Alguien te invitó? Escribe su código para que reciba el crédito.", "Checking code…":"Verificando código…", "We couldn't find that code. Check it with the person who invited you, or leave it blank.":"No encontramos ese código. Confírmalo con quien te invitó o déjalo en blanco.", "Your invite code":"Tu código de invitación", "Copy code":"Copiar código", "Code copied":"Código copiado", "If someone opens your link in a different app or browser, they can type this code on their application so you still get credit.":"Si alguien abre tu enlace en otra app o navegador, puede escribir este código en su solicitud y tú igual recibes el crédito.", "Partner application":"Solicitud de socio", "Full name":"Nombre completo", "Phone":"Teléfono", "Not you?":"¿No eres tú?", "I am a":"Soy",
   "Realtor":"Agente de bienes raíces", "Licensed agent":"Agente con licencia", "Contractor":"Contratista", "Trade or service pro":"Profesional de oficios o servicios",
   "Homeowner":"Propietario", "Past client or neighbor":"Cliente anterior o vecino", "Affiliate":"Afiliado", "Anyone else":"Cualquier otra persona",
   "Brokerage":"Agencia (brokerage)", "@Realtor payouts go through your broker":"@Los pagos a agentes se hacen a través de tu bróker", "Company or trade":"Empresa u oficio", "@e.g. ABC Plumbing":"@ej. ABC Plumbing",
@@ -2762,17 +2769,23 @@ function ownerEditReferral(r){
       return api.updateReferral(r.id, patch);
     }, after:() => viewOwner() });
 }
-function ownerEditPartner(p){
+function ownerEditPartner(p, ps){
+  ps = ps || [];
+  const recOpts = [{ value:"", label:"No one" }].concat(ps.filter(x => x.id !== p.id && x.status === "approved" && x.recruited_by !== p.id)
+    .sort((a,b) => a.name.localeCompare(b.name)).map(x => ({ value:x.id, label:`${x.name} (${x.code})` })));
+  if (p.recruited_by && !recOpts.some(o => o.value === p.recruited_by)){ const r = ps.find(x => x.id === p.recruited_by); recOpts.push({ value:p.recruited_by, label:r ? `${r.name} (${r.code})` : "Current recruiter" }); }
   openEdit({ title:"Edit partner", fields:[
     { key:"name", label:"Full name", value:p.name },
     { key:"phone", label:"Phone", type:"tel", value:p.phone },
     { key:"email", label:"Email for updates", type:"email", value:p.email, hint:"Emails and updates go here. Their sign-in email stays the same." },
     { key:"type", label:"Account type", type:"select", value:p.partner_type, options:typeOptions() },
     { key:"brokerage", label:"Brokerage", value:p.brokerage || "" },
-    { key:"company", label:"Company or trade", value:p.company || "" }
-  ], onChange:toggleTypeFields, validate:checkPartnerFields, onSave:v => api.updatePartner(p.id, {
+    { key:"company", label:"Company or trade", value:p.company || "" },
+    { key:"recruiter", label:"Recruited by", type:"select", value:p.recruited_by || "", options:recOpts, hint:"Who invited them. Changing this also moves the invite bonus on their referrals that haven't had the bonus paid yet." }
+  ], onChange:toggleTypeFields, validate:checkPartnerFields, onSave:async v => { await api.updatePartner(p.id, {
       name:v.name, phone:normPhone(v.phone), email:v.email.toLowerCase(), partner_type:v.type,
-      brokerage:v.type === "Realtor" ? v.brokerage || null : p.brokerage, company:v.type === "Contractor" ? v.company || null : p.company }),
+      brokerage:v.type === "Realtor" ? v.brokerage || null : p.brokerage, company:v.type === "Contractor" ? v.company || null : p.company });
+    if ((v.recruiter || "") !== (p.recruited_by || "")) await api.setRecruiter(p.id, v.recruiter || null); },
     after:() => viewOwner() });
 }
 
@@ -2874,7 +2887,8 @@ function viewApply(email){
       <div class="sec-b">
         <div class="field"><label class="l" for="aName">Full name</label><input class="in" id="aName" autocomplete="name"></div>
         <div class="field"><label class="l" for="aPhone">Phone</label><input class="in" id="aPhone" type="tel" inputmode="tel" autocomplete="tel"></div>
-        <div class="field" style="margin-bottom:0"><label class="l">Email</label><div class="sending-as"><span>${esc(email)}</span><button class="linkbtn" id="aOut">Not you?</button></div></div>
+        <div class="field"><label class="l">Email</label><div class="sending-as"><span>${esc(email)}</span><button class="linkbtn" id="aOut">Not you?</button></div></div>
+        <div class="field" style="margin-bottom:0"><label class="l" for="aRef">Invite code <span class="muted">(optional)</span></label><input class="in" id="aRef" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="e.g. JOHN-4F2A" value="${esc(store.get("jnm_ref", "") || "")}" style="text-transform:uppercase"><div class="small muted" id="aRefMsg" style="margin-top:6px">Did someone invite you? Enter their code so they get credit.</div></div>
       </div>
     </section>
     <section class="sec">
@@ -2896,8 +2910,18 @@ function viewApply(email){
     <button class="btn" id="aGo" disabled>Submit application</button>
     ${footer()}`;
   liveFormat($("#aPhone"));
-  const refCode = store.get("jnm_ref", null);
-  if (refCode) api.recruiterName(refCode).then(n => { if (n && $("#invBy")) $("#invBy").textContent = "Invited by " + n; });
+  let refState = "none", refT = null, refSeq = 0; // none | checking | ok | bad
+  const refVal = () => ($("#aRef").value || "").trim().toUpperCase().replace(/\s+/g, "");
+  async function checkRef(){
+    const code = refVal(), msg = $("#aRefMsg"), seq = ++refSeq;
+    if (!code){ refState = "none"; msg.style.color = ""; msg.className = "small muted"; msg.textContent = "Did someone invite you? Enter their code so they get credit."; $("#invBy").textContent = "Partner application"; check(); return; }
+    refState = "checking"; msg.style.color = ""; msg.className = "small muted"; msg.textContent = "Checking code…"; check();
+    const n = await api.recruiterName(code); if (seq !== refSeq) return;
+    if (n){ refState = "ok"; msg.className = "small"; msg.style.color = "var(--cyan)"; msg.textContent = "✓ Invited by " + n; $("#invBy").textContent = "Invited by " + n; store.set("jnm_ref", code); }
+    else { refState = "bad"; msg.className = "small"; msg.style.color = "#ff8a8a"; msg.textContent = "We couldn't find that code. Check it with the person who invited you, or leave it blank."; $("#invBy").textContent = "Partner application"; }
+    check();
+  }
+  $("#aRef").oninput = () => { clearTimeout(refT); refT = setTimeout(checkRef, 450); };
   $("#aOut").onclick = async () => { await api.signOut("partner"); render(); };
   $("#aType").onclick = e => { const b = e.target.closest(".opt"); if (!b) return; type = b.dataset.t;
     app.querySelectorAll("#aType .opt").forEach(x => x.setAttribute("aria-pressed", x === b));
@@ -2908,12 +2932,15 @@ function viewApply(email){
     if (!type) m.push("I am a");
     if (type === "Realtor" && $("#aBrok").value.trim().length < 2) m.push("Brokerage");
     if (!$("#aTerms").checked) m.push("Agree to terms");
+    if (refState === "bad") m.push("A valid invite code (or leave it blank)");
+    if (refState === "checking") m.push("Checking invite code");
     return m; };
   function check(){ const m = missing(); const n = $("#need"); n.className = "need" + (m.length ? "" : " ok"); n.textContent = m.length ? "Still needed: " + m.join(", ") + "." : "Ready to submit."; $("#aGo").disabled = m.length > 0; }
   app.oninput = check; app.onchange = check; check();
+  if (refVal()) checkRef();
   $("#aGo").onclick = async () => {
     const b = $("#aGo"); b.disabled = true; b.textContent = "Submitting…";
-    const p = { name:$("#aName").value.trim(), phone:$("#aPhone").value, type, brokerage:type==="Realtor" ? $("#aBrok").value.trim() : "", company:type==="Contractor" ? $("#aComp").value.trim() : "", ref: store.get("jnm_ref", "") || "" };
+    const p = { name:$("#aName").value.trim(), phone:$("#aPhone").value, type, brokerage:type==="Realtor" ? $("#aBrok").value.trim() : "", company:type==="Contractor" ? $("#aComp").value.trim() : "", ref: refState === "ok" ? refVal() : "" };
     try {
       await api.apply(p); api.setLang(LANG);
       notifyOwner({ _subject:`New partner application: ${p.name} (${p.type})`, name:p.name, phone:fmtPhone(p.phone), email, type:p.type, brokerage:p.brokerage, company:p.company, review_at:appLink() + "#owner" });
@@ -3108,6 +3135,9 @@ async function viewInvite(){
       <div class="sec-h"><span><span class="n">1</span>Your invite link</span><span class="aside">${esc(state.me.code)}</span></div>
       <div class="sec-b">
         <p style="margin:0 0 12px">Know other realtors, contractors or people who meet homeowners? Invite them. Every time someone you invite gets a job installed, <b class="sans" style="color:var(--cyan)">you earn ${money(state.bonus)}</b>. They still earn their full payout.</p>
+        <div class="small muted" style="margin:0 0 4px">Your invite code</div>
+        <div class="row" style="align-items:center;margin:0 0 12px;gap:10px"><b class="sans" id="invCode" style="font-size:28px;letter-spacing:.06em;color:var(--cyan)">${esc(state.me.code)}</b><button class="linkbtn" id="copyCode">Copy code</button></div>
+        <p class="small muted" style="margin:0 0 10px">If someone opens your link in a different app or browser, they can type this code on their application so you still get credit.</p>
         <input class="in" readonly value="${esc(link)}" id="invLink" onclick="this.select()">
         <div class="row" style="margin-top:10px">
           <button class="btn" id="share" style="margin:0">Share link</button>
@@ -3128,8 +3158,9 @@ async function viewInvite(){
       : `<div class="empty">No one yet. Share your link and they'll show up here once they apply.</div>`}
     </section>
     ${payoutNote(recs.some(r => +r.jobs_installed > 0))}${langBar()}`;
-  const msg = LANG === "es" ? `He estado enviando referidos a JNM Renovation & Construction y me pagan por cada trabajo que instalan. Tú también puedes unirte, toma un minuto: ${link}`
-    : `I've been sending referrals to JNM Renovation & Construction and getting paid for every job they install. You can join too, it takes a minute: ${link}`;
+  const msg = LANG === "es" ? `He estado enviando referidos a JNM Renovation & Construction y me pagan por cada trabajo que instalan. Tú también puedes unirte, toma un minuto: ${link}\nUsa mi código de invitación: ${state.me.code}`
+    : `I've been sending referrals to JNM Renovation & Construction and getting paid for every job they install. You can join too, it takes a minute: ${link}\nUse my invite code: ${state.me.code}`;
+  $("#copyCode").onclick = async () => { try { await navigator.clipboard.writeText(state.me.code); toast("Code copied"); } catch {} };
   $("#copy").onclick = async () => { try { await navigator.clipboard.writeText(link); toast("Link copied"); } catch { $("#invLink").select(); } };
   $("#share").onclick = async () => { if (navigator.share) { try { await navigator.share({ title:"JNM Referral Program", text:msg, url:link }); } catch(e){} } else { try { await navigator.clipboard.writeText(msg); toast("Message copied, paste it anywhere"); } catch { $("#invLink").select(); } } };
 }
@@ -3391,7 +3422,7 @@ function ownerPartners(ps, refs){
     </section>`;
   $("#pflt").onclick = e => { const b = e.target.closest("[data-f]"); if (!b) return; state.partnerFilter = b.dataset.f; state.justApproved = null; ownerPartners(ps, refs); };
   $("#inv").onclick = async () => { try { await navigator.clipboard.writeText(appLink()); toast("Invite link copied"); } catch { prompt("Copy this link:", appLink()); } };
-  $("#aBody").querySelectorAll("[data-edit-p]").forEach(b => b.onclick = () => ownerEditPartner(ps.find(x => x.id === b.closest("[data-pid]").dataset.pid)));
+  $("#aBody").querySelectorAll("[data-edit-p]").forEach(b => b.onclick = () => ownerEditPartner(ps.find(x => x.id === b.closest("[data-pid]").dataset.pid), ps));
   $("#aBody").querySelectorAll("[data-act]").forEach(b => b.onclick = async () => {
     const id = b.closest("[data-pid]").dataset.pid; const to = b.dataset.act; const p = ps.find(x => x.id === id);
     if (to !== "approved" && !confirm(`${to === "declined" ? "Decline" : "Deactivate"} ${p.name}? They won't be able to send referrals.`)) return;
